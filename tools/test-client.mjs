@@ -1,4 +1,4 @@
-﻿// End-to-end protocol test against a running StreamDeck Host (stand-in for the phone).
+// End-to-end protocol test against a running StreamDeck Host (stand-in for the phone).
 // Usage: node test-client.mjs <pairing-file> [port]
 // The pairing file is produced by:  StreamDeckHost.exe --tray --dev-pairing-file <file> --port <port>
 import { readFileSync } from 'node:fs';
@@ -138,6 +138,23 @@ m = await pushed; check('phone receives live layout push', m.layout.profiles[0].
 const bad = JSON.parse(JSON.stringify(lay)); bad.profiles[0].pages[0].slots.pop();
 r = await fetch(`${base}/api/layout`, { method: 'PUT', body: JSON.stringify(bad), headers: { 'Content-Type': 'application/json', 'X-SD-Editor': '1' } }); check('invalid layout rejected', r.status === 400);
 r = await fetch(`${base}/assets/icons.json`); check('icon map served', (await r.json()).volume_up > 0);
+
+// 8. live backgrounds: upload on the PC, stream to phones (with range support), restricted to the editor
+const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+const hdr = { 'X-SD-Editor': '1' };
+r = await fetch(`${base}/api/upload-bg?name=test.gif`, { method: 'POST', body: gif }); check('upload without editor header refused', r.status === 403);
+if (lanIp) { r = await fetch(`http://${lanIp}:${port}/api/upload-bg?name=test.gif`, { method: 'POST', body: gif, headers: hdr }); check('upload over LAN address refused', r.status === 403); }
+r = await fetch(`${base}/api/upload-bg?name=evil.exe`, { method: 'POST', body: gif, headers: hdr }); check('upload of .exe refused', r.status === 400);
+r = await fetch(`${base}/api/upload-bg?name=test.gif`, { method: 'POST', body: gif, headers: hdr }); const up = await r.json();
+check('GIF upload ok', r.status === 200 && up.src.startsWith('/media/') && up.type === 'image', JSON.stringify(up));
+r = await fetch(`${base}${up.src}`); check('media served to anyone (phones)', r.status === 200 && r.headers.get('content-type') === 'image/gif');
+r = await fetch(`${base}${up.src}`, { headers: { Range: 'bytes=0-9' } }); check('media supports range requests (video seeking)', r.status === 206);
+r = await fetch(`${base}/media/..%2F..%2Fsettings.json`); check('media path traversal blocked', r.status === 404);
+const lay2 = (await (await fetch(`${base}/api/layout`)).json()); lay2.background = { type: up.type, src: up.src }; lay2.bgDim = 0.4;
+const pushed2 = wait(ws, x => x.t === 'layout' && !x.id);
+r = await fetch(`${base}/api/layout`, { method: 'PUT', body: JSON.stringify(lay2), headers: { 'Content-Type': 'application/json', ...hdr } });
+m = await pushed2; check('background reaches phones in the layout push', m.layout.background?.src === up.src && m.layout.bgDim === 0.4);
+r = await fetch(`${base}/assets/bg.js`); check('bg.js served', r.status === 200);
 ws.close();
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

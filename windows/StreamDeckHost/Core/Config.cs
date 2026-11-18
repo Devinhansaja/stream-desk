@@ -33,12 +33,14 @@ public static class AppPaths
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StreamDeckHost");
     public static string Settings => Path.Combine(Root, "settings.json");
     public static string Wallpapers => Path.Combine(Root, "Wallpapers");
+    public static string Backgrounds => Path.Combine(Root, "Backgrounds");
     public static string State => Path.Combine(Root, "state.json");
 
     public static void Ensure()
     {
         Directory.CreateDirectory(Root);
         Directory.CreateDirectory(Wallpapers);
+        Directory.CreateDirectory(Backgrounds);
     }
 }
 

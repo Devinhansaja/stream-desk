@@ -1,0 +1,21 @@
+/* Shared by the editor preview and the phone deck: background layers (image / GIF / video / animated presets). */
+.bgbox { position:absolute; inset:0; overflow:hidden; z-index:0; pointer-events:none; background:#000; }
+.bgmedia { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.bgdim { position:absolute; inset:0; background:#000; }
+.bgp { position:absolute; inset:0; }
+.bgp-aurora { background:#0b0b24; }
+.bgp-aurora::before, .bgp-aurora::after { content:''; position:absolute; width:90%; height:90%; border-radius:50%; filter:blur(60px); opacity:.75; animation:drift 14s ease-in-out infinite alternate; }
+.bgp-aurora::before { left:-20%; top:-10%; background:radial-gradient(circle,#7c4dff,transparent 65%); }
+.bgp-aurora::after { right:-25%; bottom:-20%; background:radial-gradient(circle,#00e5ff,transparent 65%); animation-duration:18s; animation-direction:alternate-reverse; }
+@keyframes drift { from { transform:translate(0,0) scale(1); } to { transform:translate(30%,25%) scale(1.25); } }
+.bgp-grid { background:linear-gradient(#0a0020,#1a0840); overflow:hidden; }
+.bgp-grid::before { content:''; position:absolute; left:-50%; right:-50%; bottom:-10%; height:75%; transform:perspective(300px) rotateX(62deg); transform-origin:bottom;
+  background-image:linear-gradient(#ff2bd6aa 2px,transparent 2px),linear-gradient(90deg,#00e5ffaa 2px,transparent 2px); background-size:60px 60px; animation:grid 1.6s linear infinite; }
+@keyframes grid { from { background-position:0 0; } to { background-position:0 60px; } }
+.bgp-waves { background:linear-gradient(135deg,#0f2027,#203a43,#2c5364,#1e90ff,#7c4dff); background-size:400% 400%; animation:shift 16s ease infinite; }
+@keyframes shift { 0% { background-position:0% 50%; } 50% { background-position:100% 50%; } 100% { background-position:0% 50%; } }
+.bgp-stars { background:radial-gradient(ellipse at bottom,#1b2735,#05060b); }
+.bgp-stars::before, .bgp-stars::after { content:''; position:absolute; inset:-100% 0 0 0; background-repeat:repeat; animation:fall 40s linear infinite; }
+.bgp-stars::before { background-image:radial-gradient(1.5px 1.5px at 20px 30px,#fff,transparent),radial-gradient(1px 1px at 90px 120px,#bcd,transparent),radial-gradient(1.5px 1.5px at 160px 60px,#fff,transparent),radial-gradient(1px 1px at 230px 180px,#9cf,transparent); background-size:260px 220px; }
+.bgp-stars::after { background-image:radial-gradient(2px 2px at 60px 90px,#fff,transparent),radial-gradient(1px 1px at 140px 20px,#fff,transparent),radial-gradient(1.5px 1.5px at 200px 150px,#cdf,transparent); background-size:340px 300px; animation-duration:70s; }
+@keyframes fall { from { transform:translateY(0); } to { transform:translateY(50%); } }

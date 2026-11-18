@@ -35,7 +35,8 @@
   .tabs { display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding:10px 14px 0; }
   .tab { padding:6px 15px; border-radius:999px; background:var(--panel2); border:1px solid var(--line); cursor:pointer; } .tab.on { background:var(--purple); border-color:var(--purple); }
   #gridWrap { flex:1; min-height:0; display:grid; place-items:center; margin:10px 14px 14px; border-radius:16px; padding:12px; background-size:cover; background-position:center; background-color:#05050c; border:1px solid var(--line); container-type:size; }
-  #grid { display:grid; gap:8px; width:min(100cqw, calc(100cqh * var(--ar))); aspect-ratio:var(--ar); }
+  #gridWrap { position:relative; overflow:hidden; }
+  #grid { position:relative; z-index:1; display:grid; gap:8px; width:min(100cqw, calc(100cqh * var(--ar))); aspect-ratio:var(--ar); }
   body.embedded header { display:none; }
   .bar { gap:6px; padding:8px 12px; }
   #grid.flat { gap:5px; }
@@ -94,13 +95,18 @@
       <div class="stack"><button id="pgRen">Rename page</button><button id="pgDel" class="danger">Delete page</button></div>
       <h3>Look</h3>
       <select id="styleSel" style="width:100%"><option value="flat">Flat</option><option value="neon">Neon glow</option></select>
-      <div class="stack"><button id="bgBtn">Background image…</button><button id="bgClr">Clear background</button></div>
-      <input type="file" id="bgFile" accept="image/*" hidden>
+      <h3>Live background</h3>
+      <div class="stack"><button id="bgBtn">Upload image / GIF / video…</button></div>
+      <select id="bgPreset" style="width:100%;margin-top:6px"><option value="">Animated preset…</option><option value="aurora">Aurora</option><option value="grid">Neon grid</option><option value="waves">Waves</option><option value="stars">Stars</option></select>
+      <label class="f">Darken background</label><input type="range" id="bgDim" min="0" max="0.9" step="0.05" style="width:100%">
+      <div class="stack"><button id="bgClr">Clear background</button></div>
+      <div class="hint" id="bgMsg">Video: mp4/webm, ideally 720p–1080p. Live backgrounds use more phone battery.</div>
+      <input type="file" id="bgFile" accept="image/*,video/mp4,video/webm" hidden>
     </div>
   </section>
 
   <section class="center">
-    <div id="gridWrap"><div id="grid"></div></div>
+    <div id="gridWrap"><div id="bgLayer" style="border-radius:16px"></div><div id="grid"></div></div>
     <div class="tabs" id="pageTabs"></div>
     <div class="insp"><h2>Key settings <span class="hint" style="text-transform:none;letter-spacing:0">— click a key to configure it</span></h2><div class="scroll" id="panel"></div></div>
   </section>
@@ -246,7 +252,9 @@ function draw(panel = true) {
   prof().pages.forEach((p, i) => tabs.append(el('div', { className: 'tab' + (i === gi ? ' on' : ''), textContent: String(i + 1), title: p.name, onclick: () => { gi = i; sel = -1; draw(); } })));
   tabs.append(el('div', { className: 'tab', textContent: '+', title: 'Add page', onclick: () => { prof().pages.push(newPage('Page ' + (prof().pages.length + 1), 4, 4)); gi = prof().pages.length - 1; sel = -1; changed(); } }));
   const pg = page(); $('cols').value = pg.cols; $('rows').value = pg.rows; $('styleSel').value = L.style === 'neon' ? 'neon' : 'flat';
-  $('gridWrap').style.backgroundImage = L.background ? `url(${L.background})` : 'none';
+  const bgKey = JSON.stringify(L.background || null);
+  if (bgKey !== window.lastBg) { window.lastBg = bgKey; applyBg($('bgLayer'), L.background, L.bgDim); } else setBgDim($('bgLayer'), L.bgDim);
+  $('bgDim').value = L.bgDim == null ? 0.25 : L.bgDim; $('bgPreset').value = L.background && L.background.type === 'preset' ? L.background.id : '';
   const g = $('grid'); g.innerHTML = ''; g.className = L.style === 'neon' ? '' : 'flat'; g.style.setProperty('--ar', pg.cols / pg.rows);
   g.style.gridTemplateColumns = `repeat(${pg.cols},minmax(0,1fr))`; g.style.gridTemplateRows = `repeat(${pg.rows},minmax(0,1fr))`;
   pg.slots.forEach((b, i) => {
@@ -429,8 +437,17 @@ $('profDefault').onclick = () => { L.activeProfile = prof().id; changed(); };
 $('styleSel').onchange = e => { L.style = e.target.value; changed(); };
 $('bgBtn').onclick = () => $('bgFile').click();
 $('bgClr').onclick = () => { L.background = null; changed(); };
-$('bgFile').onchange = e => { const f = e.target.files[0]; if (!f) return; const im = new Image(); im.onload = () => { const s = Math.min(1, 1600 / Math.max(im.width, im.height)); const c = document.createElement('canvas'); c.width = Math.round(im.width * s); c.height = Math.round(im.height * s); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); L.background = c.toDataURL('image/jpeg', 0.82); changed(); }; im.src = URL.createObjectURL(f); };
-$('pgRen').onclick = () => { const n = prompt('Rename page', page().name); if (n) { page().name = n; changed(); } };
+$('bgPreset').onchange = e => { L.background = e.target.value ? { type: 'preset', id: e.target.value } : null; changed(); };
+$('bgDim').oninput = e => { L.bgDim = +e.target.value; setBgDim($('bgLayer'), L.bgDim); changed(true); };
+$('bgFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const msg = $('bgMsg'); msg.textContent = `Uploading ${f.name} (${(f.size / 1048576).toFixed(1)} MB)…`;
+  try {
+    const r = await fetch('/api/upload-bg?name=' + encodeURIComponent(f.name), { method: 'POST', body: f, headers: { 'X-SD-Editor': '1' } });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status);
+    L.background = { type: j.type, src: j.src }; msg.textContent = 'Background set. Phones update now.'; changed();
+  } catch (err) { msg.textContent = 'Upload failed: ' + err.message; }
+};$('pgRen').onclick = () => { const n = prompt('Rename page', page().name); if (n) { page().name = n; changed(); } };
 $('pgDel').onclick = () => { if (prof().pages.length < 2) return alert('A profile needs at least one page.'); if (!confirm('Delete page "' + page().name + '"?')) return; prof().pages.splice(gi, 1); gi = 0; sel = -1; changed(); };
 const sizeChange = () => { const c = Math.max(1, Math.min(12, +$('cols').value || 1)), r = Math.max(1, Math.min(12, +$('rows').value || 1)); resizePage(page(), c, r); sel = -1; changed(); };
 [[4,3],[5,3],[4,4],[6,4],[8,4],[8,6]].forEach(([c, r]) => $('sizePresets').append(el('button', { textContent: `${c}×${r}`, title: `${c * r} keys`, onclick: () => { resizePage(page(), c, r); sel = -1; changed(); } })));

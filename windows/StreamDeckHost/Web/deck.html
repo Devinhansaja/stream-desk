@@ -12,7 +12,7 @@
   html,body { margin:0; height:100%; background:#000; color:#fff; font-family:system-ui,Roboto,sans-serif; overflow:hidden; touch-action:manipulation; }
   body { position:fixed; inset:0; background-size:cover; background-position:center; }
   body.neon { --gap:10px; --radius:20px; background-color:#05050f; }
-  #pages { position:absolute; inset:0; display:flex; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory; scrollbar-width:none; overscroll-behavior:contain; }
+  #pages { position:absolute; z-index:1; inset:0; display:flex; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory; scrollbar-width:none; overscroll-behavior:contain; }
   #pages::-webkit-scrollbar { display:none; }
   .page { flex:0 0 100%; scroll-snap-align:start; scroll-snap-stop:always; display:grid; gap:var(--gap); padding:var(--gap); min-height:0; }
   /* ---------- keys: flat style (default) ---------- */
@@ -57,7 +57,7 @@
 </style>
 </head>
 <body>
-<div id="pages"></div>
+<div id="bg" style="position:fixed;inset:0;z-index:0"></div>
 <div id="banner">Offline – reconnecting…</div>
 <span id="dot"></span><div id="gear">⚙</div><div id="dots"></div>
 <div id="toast"></div>
@@ -70,7 +70,7 @@ const H = new URLSearchParams(location.hash.slice(1));
 const DEV = H.get('d') || '', TOK = H.get('t') || '';
 const $ = id => document.getElementById(id);
 const native = m => { try { Native.postMessage(m); } catch (e) {} };
-let icons = {}, layout = null, ws = null, status = {}, fails = 0, connected = false, nextId = 1, pending = {}, retry = null, dotsT = null;
+let lastBg = null, icons = {}, layout = null, ws = null, status = {}, fails = 0, connected = false, nextId = 1, pending = {}, retry = null, dotsT = null;
 let profileId = localStorage.getItem('profile') || null, curPage = 0;
 
 const hexToRgba = (h, a) => { const n = parseInt(h.replace('#', ''), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
@@ -106,7 +106,8 @@ setInterval(() => { if (document.querySelector('.key[data-w="clock"]')) refreshW
 function render() {
   const p = profile(), host = $('pages'), dots = $('dots');
   document.body.classList.toggle('neon', !!layout && layout.style === 'neon');
-  document.body.style.backgroundImage = layout && layout.background ? `url(${layout.background})` : 'none';
+  const bgKey = JSON.stringify((layout && layout.background) || null);
+  if (bgKey !== lastBg) { lastBg = bgKey; applyBg($('bg'), layout && layout.background, layout && layout.bgDim); } else setBgDim($('bg'), layout && layout.bgDim);
   host.innerHTML = ''; dots.innerHTML = '';
   if (!p) { host.innerHTML = '<div id="empty">Waiting for the layout from your PC…</div>'; return; }
   p.pages.forEach(pg => {

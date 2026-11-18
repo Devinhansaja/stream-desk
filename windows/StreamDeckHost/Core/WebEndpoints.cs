@@ -47,6 +47,25 @@ public static class WebEndpoints
         return ms.ToArray();
     }
 
+    static string MediaType(string file) => Path.GetExtension(file).ToLowerInvariant() switch
+    {
+        ".mp4" => "video/mp4", ".webm" => "video/webm", ".gif" => "image/gif", ".png" => "image/png",
+        ".webp" => "image/webp", _ => "image/jpeg",
+    };
+
+    /// <summary>Deletes uploaded backgrounds the layout no longer uses (keeps very recent uploads).</summary>
+    static void CleanupMedia(LayoutStore layout)
+    {
+        try
+        {
+            var src = (layout.Snapshot()["background"] as JsonObject)?["src"]?.GetValue<string>() ?? "";
+            var keep = Path.GetFileName(src);
+            foreach (var f in Directory.EnumerateFiles(AppPaths.Backgrounds))
+                if (Path.GetFileName(f) != keep && File.GetCreationTimeUtc(f) < DateTime.UtcNow.AddMinutes(-3)) File.Delete(f);
+        }
+        catch { }
+    }
+
     /// <summary>PC-only: loopback client, and a Host header that is localhost (blocks DNS rebinding).</summary>
     static bool IsLocalEditor(HttpContext ctx, int port)
     {
@@ -102,6 +121,7 @@ public static class WebEndpoints
             try { o = await c.Request.ReadFromJsonAsync<JsonObject>(); } catch { return Results.BadRequest(new { error = "invalid json" }); }
             if (o == null) return Results.BadRequest(new { error = "empty" });
             var err = layout.Save(o);
+            if (err == null) CleanupMedia(layout);
             return err == null ? Results.Ok(new { ok = true, version = layout.Snapshot()["version"]?.GetValue<int>() }) : Results.BadRequest(new { error = err });
         });
 
@@ -130,6 +150,38 @@ public static class WebEndpoints
             catch (Exception e) { return Results.Ok(new { ok = false, error = e.Message }); }
         });
 
+        // ---- live backgrounds (image / GIF / video) stored on the PC and streamed to phones
+        app.MapGet("/assets/bg.css", () => Resource("bg.css") is { } s ? Results.Text(s, "text/css") : Results.NotFound());
+        app.MapGet("/assets/bg.js", () => Resource("bg.js") is { } s ? Results.Text(s, "application/javascript") : Results.NotFound());
+
+        app.MapGet("/media/{file}", (string file) =>
+        {
+            if (!System.Text.RegularExpressions.Regex.IsMatch(file, @"^[A-Za-z0-9._-]{1,120}$")) return Results.NotFound();
+            var path = Path.Combine(AppPaths.Backgrounds, file);
+            if (!File.Exists(path)) return Results.NotFound();
+            return Results.File(path, MediaType(file), enableRangeProcessing: true);
+        });
+
+        app.MapPost("/api/upload-bg", async (HttpContext c) =>
+        {
+            if (!IsEditorCall(c, port)) return Results.StatusCode(403);
+            var name = Path.GetFileName(c.Request.Query["name"].ToString());
+            var ext = Path.GetExtension(name).ToLowerInvariant();
+            var type = ext is ".mp4" or ".webm" ? "video" : ext is ".gif" or ".png" or ".jpg" or ".jpeg" or ".webp" ? "image" : null;
+            if (type == null) return Results.BadRequest(new { error = "Use mp4, webm, gif, png, jpg or webp" });
+            var maxSize = c.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+            if (maxSize is { IsReadOnly: false }) maxSize.MaxRequestBodySize = 200L * 1024 * 1024;
+            AppPaths.Ensure();
+            var stored = Guid.NewGuid().ToString("N")[..10] + ext;
+            var dest = Path.Combine(AppPaths.Backgrounds, stored);
+            try
+            {
+                await using (var fs = File.Create(dest)) await c.Request.Body.CopyToAsync(fs);
+                if (new FileInfo(dest).Length == 0) { File.Delete(dest); return Results.BadRequest(new { error = "empty file" }); }
+            }
+            catch (Exception e) { try { File.Delete(dest); } catch { } return Results.BadRequest(new { error = e.Message }); }
+            return Results.Ok(new { src = "/media/" + stored, type });
+        });
         app.MapGet("/api/fetch-image", async (HttpContext c) =>
         {
             if (!IsLocalEditor(c, port)) return Results.StatusCode(403);
