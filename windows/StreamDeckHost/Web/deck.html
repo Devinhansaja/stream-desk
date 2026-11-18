@@ -55,6 +55,10 @@
   .card button { font:inherit; color:#fff; background:#1c1c2c; border:1px solid #ffffff22; border-radius:12px; padding:11px 14px; margin:4px 0; width:100%; text-align:left; }
   .card button.pri { background:#7c4dff; border-color:#7c4dff; }
   .row { display:flex; gap:8px; } .row button { text-align:center; }
+  .key.slider { cursor:pointer; }
+  .key.slider .fill { position:absolute; left:0; bottom:0; width:100%; height:0; opacity:.6; transition:height .1s, width .1s; }
+  .key.slider .ic, .key.slider .sval, .key.slider .lb { position:relative; z-index:1; }
+  .key .sval { font-size:max(14px,18cqmin); font-weight:800; line-height:1; }
   #empty { margin:auto; text-align:center; color:#aaa; padding:30px; }
 </style>
 </head>
@@ -73,7 +77,7 @@ const H = new URLSearchParams(location.hash.slice(1));
 const DEV = H.get('d') || '', TOK = H.get('t') || '';
 const $ = id => document.getElementById(id);
 const native = m => { try { Native.postMessage(m); } catch (e) {} };
-let lastBg = null, icons = {}, layout = null, ws = null, status = {}, fails = 0, connected = false, nextId = 1, pending = {}, retry = null, dotsT = null;
+let folderId = null, lastBg = null, icons = {}, layout = null, ws = null, status = {}, fails = 0, connected = false, nextId = 1, pending = {}, retry = null, dotsT = null;
 let profileId = localStorage.getItem('profile') || null, curPage = 0;
 
 const hexToRgba = (h, a) => { const n = parseInt(h.replace('#', ''), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
@@ -113,16 +117,32 @@ function render() {
   if (bgKey !== lastBg) { lastBg = bgKey; applyBg($('bg'), layout && layout.background, layout && layout.bgDim); } else setBgDim($('bg'), layout && layout.bgDim);
   host.innerHTML = ''; dots.innerHTML = '';
   if (!p) { host.innerHTML = '<div id="empty">Waiting for the layout from your PC…</div>'; return; }
-  p.pages.forEach(pg => {
+  // Folder pages are hidden from the swipe pager and only open from a folder key.
+  let shown = folderId ? p.pages.filter(x => x.id === folderId) : p.pages.filter(x => !x.hidden);
+  if (!shown.length) { folderId = null; shown = p.pages.filter(x => !x.hidden); if (!shown.length) shown = p.pages; }
+  shown.forEach(pg => {
     const el = document.createElement('div'); el.className = 'page';
     el.style.gridTemplateColumns = `repeat(${pg.cols},minmax(0,1fr))`; el.style.gridTemplateRows = `repeat(${pg.rows},minmax(0,1fr))`;
-    pg.slots.forEach(b => el.appendChild(b ? keyEl(b) : Object.assign(document.createElement('div'), { className: 'key empty' })));
+    const covered = new Set();
+    pg.slots.forEach((b, i) => {
+      if (!b) return; const cs = b.colSpan || 1, rs = b.rowSpan || 1; if (cs < 2 && rs < 2) return;
+      const c = i % pg.cols, r = Math.floor(i / pg.cols);
+      for (let dr = 0; dr < rs; dr++) for (let dc = 0; dc < cs; dc++) if ((dr || dc) && c + dc < pg.cols && r + dr < pg.rows) covered.add((r + dr) * pg.cols + c + dc);
+    });
+    pg.slots.forEach((b, i) => {
+      if (covered.has(i)) return;
+      const n = b ? keyEl(b) : Object.assign(document.createElement('div'), { className: 'key empty' });
+      const c = i % pg.cols, r = Math.floor(i / pg.cols);
+      n.style.gridColumn = `${c + 1} / span ${Math.max(1, Math.min(b ? b.colSpan || 1 : 1, pg.cols - c))}`;
+      n.style.gridRow = `${r + 1} / span ${Math.max(1, Math.min(b ? b.rowSpan || 1 : 1, pg.rows - r))}`;
+      el.appendChild(n);
+    });
     host.appendChild(el); dots.appendChild(document.createElement('i'));
   });
-  dots.style.display = p.pages.length > 1 ? 'flex' : 'none';
-  curPage = Math.min(curPage, p.pages.length - 1);
+  dots.style.display = shown.length > 1 ? 'flex' : 'none';
+  curPage = Math.min(curPage, shown.length - 1);
   host.scrollTo({ left: curPage * host.clientWidth });
-  markDots(); refreshActive(); refreshWidgets(); setConn(connected ? 'on' : 'off');
+  markDots(); refreshActive(); refreshWidgets(); refreshSliders(); setConn(connected ? 'on' : 'off');
 }
 
 function keyEl(b) {
@@ -134,7 +154,8 @@ function keyEl(b) {
   k.style.setProperty('--bc', hexToRgba(b.color1, .75)); k.style.setProperty('--ic', `color-mix(in srgb, ${b.color1} 70%, white)`);
   k.style.setProperty('--c1', b.color1); k.style.setProperty('--c2', b.color2); k.style.setProperty('--t1', hexToRgba(b.color1, .3));
   k.style.setProperty('--gl', Math.round(4 + 22 * b.glow) + 'px'); k.style.setProperty('--ga', hexToRgba(b.color1, .15 + .45 * b.glow));
-  if (b.widget) {
+  if (b.widget && b.widget.startsWith('slider:')) { makeSlider(k, b); }
+  else if (b.widget) {
     k.dataset.w = b.widget;
     k.innerHTML = '<div class="val"></div><div class="bar"><i></i></div>';
   } else if (b.image) { const i = document.createElement('img'); i.src = b.image; k.append(i); }
@@ -144,11 +165,47 @@ function keyEl(b) {
     else ic.textContent = icons[b.icon] ? String.fromCodePoint(icons[b.icon]) : (icons.bolt ? String.fromCodePoint(icons.bolt) : '?');
     k.append(ic);
   }
-  if (b.label) { const lb = document.createElement('div'); lb.className = 'lb'; lb.textContent = b.label; k.append(lb); }
+  if (b.label && !b.hideLabel && !(layout && layout.showLabels === false)) { const lb = document.createElement('div'); lb.className = 'lb'; lb.textContent = b.label; k.append(lb); }
   k.addEventListener('pointerdown', () => k.classList.add('down'));
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(e => k.addEventListener(e, () => k.classList.remove('down')));
-  k.addEventListener('click', () => press(k, b));
+  if (!k.classList.contains('slider')) k.addEventListener('click', () => press(k, b));
   return k;
+}
+
+// ---- sliders (volume / brightness): drag inside the key, like a phone's control panel ------------
+const SLIDERS = { volume: { type: 'volume_set', icon: 'volume_up', get: s => s.volume }, brightness: { type: 'brightness_set', icon: 'wb_sunny', get: s => s.brightness } };
+function paintSlider(k, pct) {
+  const f = k.querySelector('.fill'), v = k.querySelector('.sval');
+  const vertical = k.clientHeight >= k.clientWidth, p = Math.max(0, Math.min(100, pct == null ? 0 : pct));
+  if (vertical) { f.style.width = '100%'; f.style.height = p + '%'; f.style.left = '0'; f.style.bottom = '0'; f.style.background = 'linear-gradient(0deg,var(--ic),color-mix(in srgb,var(--ic) 35%,transparent))'; }
+  else { f.style.height = '100%'; f.style.width = p + '%'; f.style.left = '0'; f.style.bottom = '0'; f.style.background = 'linear-gradient(90deg,var(--ic),color-mix(in srgb,var(--ic) 35%,transparent))'; }
+  v.textContent = pct == null || pct < 0 ? 'n/a' : p + '%';
+}
+function makeSlider(k, b) {
+  const kind = b.widget.slice(7), sd = SLIDERS[kind] || SLIDERS.volume;
+  k.classList.add('slider'); k.dataset.sl = kind; k.style.touchAction = 'none';
+  const fill = document.createElement('div'); fill.className = 'fill';
+  const ic = document.createElement('div'); ic.className = 'ic';
+  const name = b.icon && !b.icon.startsWith('t:') && icons[b.icon] ? b.icon : sd.icon;
+  ic.textContent = icons[name] ? String.fromCodePoint(icons[name]) : '';
+  const val = document.createElement('div'); val.className = 'sval';
+  k.append(fill, ic, val);
+  let dragging = false, lastSend = 0, pct = 0;
+  const send1 = v => send({ t: 'action', id: nextId++, action: { type: sd.type, value: v } });
+  const upd = e => {
+    const r = k.getBoundingClientRect(), vertical = k.clientHeight >= k.clientWidth;
+    let v = vertical ? 1 - (e.clientY - r.top) / r.height : (e.clientX - r.left) / r.width;
+    pct = Math.round(Math.max(0, Math.min(1, v)) * 100); paintSlider(k, pct);
+    const now = Date.now(); if (now - lastSend > 120) { lastSend = now; send1(pct); }
+  };
+  k.addEventListener('pointerdown', e => { if (!connected) { toast('Not connected to the PC'); return; } dragging = true; k._drag = true; try { k.setPointerCapture(e.pointerId); } catch (x) {} native('h'); upd(e); });
+  k.addEventListener('pointermove', e => { if (dragging) upd(e); });
+  const end = () => { if (!dragging) return; dragging = false; send1(pct); setTimeout(() => { k._drag = false; }, 800); };
+  k.addEventListener('pointerup', end); k.addEventListener('pointercancel', end);
+  k._slider = sd; paintSlider(k, null);
+}
+function refreshSliders() {
+  document.querySelectorAll('.key.slider').forEach(k => { if (k._drag || !connected) return; paintSlider(k, k._slider.get(status)); });
 }
 
 function refreshActive() {
@@ -167,6 +224,9 @@ const send = o => { if (ws && ws.readyState === 1) { ws.send(JSON.stringify(o));
 
 function press(k, b) {
   native('h');
+  const at = b.action && b.action.type;
+  if (at === 'folder') { folderId = b.action.pageId || null; curPage = 0; render(); return; }
+  if (at === 'back') { folderId = null; curPage = 0; render(); return; }
   if (!b.action || b.action.type === 'none') return;
   if (!connected) { toast('Not connected to the PC'); return; }
   const run = () => {
@@ -193,7 +253,7 @@ function onMsg(m) {
   switch (m.t) {
     case 'auth_ok': fails = 0; setConn('on'); send({ t: 'layout_get', id: 0 }); break;
     case 'auth_fail': native('unpaired'); break;
-    case 'status': status = m; refreshActive(); refreshWidgets(); break;
+    case 'status': status = m; refreshActive(); refreshWidgets(); refreshSliders(); break;
     case 'layout': setLayout(m.layout); break;
   }
 }

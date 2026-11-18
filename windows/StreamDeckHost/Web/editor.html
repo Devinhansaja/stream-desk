@@ -73,6 +73,7 @@
   .insp h2 { margin:0; padding:8px 14px; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--line); flex:none; }
   #panel { column-width:300px; column-gap:22px; }
   #panel > * { break-inside:avoid-column; }  .presets { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; } .presets button { padding:4px 8px; font-size:12px; }
+  .tabs .tab.folder { width:auto; padding:0 12px; }
 </style>
 </head>
 <body>
@@ -100,6 +101,7 @@
       <h3>Keys</h3>
       <label class="f">Key opacity (lower = see background)</label><input type="range" id="keyAlpha" min="0" max="1" step="0.05" style="width:100%">
       <label class="f">Glass blur</label><input type="range" id="keyBlur" min="0" max="20" step="1" style="width:100%">
+      <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="showLabels"> Show titles on keys</label>
       <h3>Live background</h3>
       <div class="stack"><button id="bgBtn">Upload image / GIF / video…</button></div>
       <select id="bgPreset" style="width:100%;margin-top:6px"><option value="">Animated preset…</option><option value="aurora">Aurora</option><option value="grid">Neon grid</option><option value="waves">Waves</option><option value="stars">Stars</option></select>
@@ -159,9 +161,11 @@ const ACTIONS = [
   { type:'macro', label:'Macro (several steps)', cat:'Flow', icon:'bolt', params:[] },
   { type:'delay', label:'Wait (macro step)', cat:'Flow', icon:'timer', params:[{k:'ms',l:'Milliseconds',kind:'number',def:500}] },
   { type:'none', label:'Do nothing (display only)', cat:'Flow', icon:'block', params:[] },
+  { type:'folder', label:'Folder (a group of keys)', cat:'Flow', icon:'folder', params:[{k:'pageId',l:'Opens this folder page',kind:'page'}] },
+  { type:'back', label:'Back (close folder)', cat:'Flow', icon:'arrow_back', params:[] },
 ];
 const CAT_COLORS = { Audio:['#1e90ff','#00e5ff'], Display:['#ffc400','#ff6d00'], Input:['#7c4dff','#d500f9'], Launch:['#00e676','#1b5e20'], Power:['#ff1744','#b71c1c'], Flow:['#b0bec5','#455a64'] };
-const WIDGETS = [['cpu','CPU %','memory'],['ram','RAM %','developer_board'],['uptime','PC uptime','schedule'],['clock','Clock','access_time'],['volume','Volume','volume_up'],['brightness','Brightness','brightness_6'],['disk:C','Disk C: free','storage'],['disk:D','Disk D: free','storage'],['disk:E','Disk E: free','storage']];
+const WIDGETS = [['cpu','CPU %','memory'],['ram','RAM %','developer_board'],['uptime','PC uptime','schedule'],['clock','Clock','access_time'],['volume','Volume','volume_up'],['brightness','Brightness','brightness_6'],['disk:C','Disk C: free','storage'],['disk:D','Disk D: free','storage'],['disk:E','Disk E: free','storage'],['slider:volume','Volume slider','tune'],['slider:brightness','Brightness slider','brightness_6']];
 const def = t => ACTIONS.find(a => a.type === t) || ACTIONS[0];
 const defaults = t => { const a = { type: t }; def(t).params.forEach(p => { if (p.def !== undefined) a[p.k] = p.def; }); if (t === 'macro') a.steps = []; return a; };
 const PALETTE = ['#1e90ff','#00e5ff','#7c4dff','#d500f9','#ff1744','#ff6d00','#ffc400','#76ff03','#00e676','#1de9b6','#ff4081','#b0bec5'];
@@ -196,7 +200,7 @@ async function save() {
 }
 
 // ------------------------------------------------------------------ keys
-function widgetText(w) { const m = { cpu:'37%', ram:'52%', uptime:'1d 4:12', clock:'12:34', volume:'70%', brightness:'80%' }; return w.startsWith('disk:') ? '512 GB free' : (m[w] || ''); }
+function widgetText(w) { const m = { cpu:'37%', ram:'52%', uptime:'1d 4:12', clock:'12:34', volume:'70%', brightness:'80%' }; if (w.startsWith('slider:')) return '60%'; return w.startsWith('disk:') ? '512 GB free' : (m[w] || ''); }
 function keyNode(b) {
   const neon = L.style === 'neon', k = el('div', { className: 'key' });
   if (neon) {
@@ -208,20 +212,44 @@ function keyNode(b) {
     if (L.keyBlur) k.style.backdropFilter = `blur(${L.keyBlur}px)`;
   }
   const tint = `color-mix(in srgb, ${b.color1} 70%, white)`;
+  if (b.widget && b.widget.startsWith('slider:')) k.append(el('div', { style: `position:absolute;left:0;bottom:0;width:100%;height:60%;background:${rgba(b.color1, .45)}` }));
   if (b.widget) k.append(el('div', { className: 'val', textContent: widgetText(b.widget), style: `color:${tint}` }));
   else if (b.image) k.append(el('img', { src: b.image }));
   else { const ic = el('div', { className: 'ic' }); ic.style.color = tint; if (neon) ic.style.textShadow = `0 0 14px ${b.color1}`;
     if ((b.icon || '').startsWith('t:')) { ic.classList.add('txt'); ic.textContent = b.icon.slice(2); } else ic.textContent = glyph(b.icon); k.append(ic); }
-  if (b.label) k.append(el('div', { className: 'lb', textContent: b.label }));
+  if (b.label && !b.hideLabel && L.showLabels !== false) k.append(el('div', { className: 'lb', textContent: b.label }));
   return k;
 }
 
 function newPage(name, cols, rows) { return { id: uid(), name, cols, rows, slots: Array(cols * rows).fill(null) }; }
-function resizePage(pg, c, r) { const keep = pg.slots.filter(Boolean); pg.cols = c; pg.rows = r; pg.slots = Array(c * r).fill(null); keep.forEach((b, i) => { if (i < pg.slots.length) pg.slots[i] = b; }); }
+/** Cells hidden underneath keys that span more than one cell. */
+function coveredSet(pg) {
+  const s = new Set();
+  pg.slots.forEach((b, i) => {
+    if (!b) return; const cs = b.colSpan || 1, rs = b.rowSpan || 1, c = i % pg.cols, r = Math.floor(i / pg.cols);
+    for (let dr = 0; dr < rs; dr++) for (let dc = 0; dc < cs; dc++) if ((dr || dc) && c + dc < pg.cols && r + dr < pg.rows) s.add((r + dr) * pg.cols + c + dc);
+  });
+  return s;
+}
+function trySpan(pg, i, cs, rs, silent) {
+  const b = pg.slots[i], c = i % pg.cols, r = Math.floor(i / pg.cols);
+  if (c + cs > pg.cols || r + rs > pg.rows) { if (!silent) alert('That size does not fit on this page.'); return false; }
+  for (let dr = 0; dr < rs; dr++) for (let dc = 0; dc < cs; dc++) { if (!dr && !dc) continue; if (pg.slots[(r + dr) * pg.cols + c + dc]) { if (!silent) alert('Another key is in the way. Move or remove it first.'); return false; } }
+  b.colSpan = cs; b.rowSpan = rs; return true;
+}
+/** A folder is a hidden page + a key that opens it. The folder starts with a Back key. */
+function makeFolder() {
+  const pg = page(), fp = newPage('Folder', pg.cols, pg.rows); fp.hidden = true;
+  fp.slots[0] = newButton({ label: 'Back', icon: 'arrow_back', color1: '#b0bec5', color2: '#455a64', action: { type: 'back' } });
+  prof().pages.push(fp);
+  return newButton({ label: 'Folder', icon: 'folder', color1: '#ffc400', color2: '#ff6d00', action: { type: 'folder', pageId: fp.id } });
+}
+function resizePage(pg, c, r) { const keep = pg.slots.filter(Boolean); keep.forEach(b => { b.colSpan = 1; b.rowSpan = 1; }); pg.cols = c; pg.rows = r; pg.slots = Array(c * r).fill(null); keep.forEach((b, i) => { if (i < pg.slots.length) pg.slots[i] = b; }); }
 function newButton(over = {}) { return Object.assign({ id: uid(), label: '', icon: 'bolt', image: null, widget: null, color1: '#1e90ff', color2: '#7c4dff', glow: 0.6, confirm: false, action: defaults('volume_up') }, over); }
 
 /** Turns something dragged from the library into a button (or an action). */
 function fromPayload(p) {
+  if (p.kind === 'action' && p.type === 'folder') return makeFolder();
   if (p.kind === 'action') { const d = def(p.type), c = CAT_COLORS[d.cat] || CAT_COLORS.Flow; return newButton({ label: d.label.replace(/ \(.*\)/, ''), icon: d.icon, color1: c[0], color2: c[1], action: defaults(p.type) }); }
   if (p.kind === 'preset') { const [label, icon, c1, c2, action, confirm] = PRESETS[p.i]; return newButton({ label, icon, color1: c1, color2: c2, confirm: !!confirm, action: JSON.parse(JSON.stringify(action)) }); }
   if (p.kind === 'tile') { const [w, label, icon] = WIDGETS[p.i]; return newButton({ label, icon, widget: w, color1: '#22e58b', color2: '#22e58b', action: defaults('none') }); }
@@ -244,10 +272,11 @@ function dropOn(i, payload) {
   const pg = page();
   if (payload.kind === 'action' && pg.slots[i]) { pg.slots[i].action = b.action; }   // keep the key's look, change what it does
   else pg.slots[i] = b;
+  if (pg.slots[i] && pg.slots[i].widget && pg.slots[i].widget.startsWith('slider:') && !pg.slots[i].rowSpan) trySpan(pg, i, 1, 2, true);   // sliders start 2 cells tall when there is room
   sel = i; changed();
 }
 function addToFree(payload) {
-  const pg = page(); let i = (sel >= 0 && !pg.slots[sel]) ? sel : pg.slots.findIndex(s => !s);
+  const pg = page(), cov = coveredSet(pg); let i = (sel >= 0 && !pg.slots[sel] && !cov.has(sel)) ? sel : pg.slots.findIndex((s, j) => !s && !cov.has(j));
   if (i < 0) return alert('This page is full. Make it bigger or add a page.');
   dropOn(i, payload);
 }
@@ -258,17 +287,21 @@ function draw(panel = true) {
   const pl = $('profList'); pl.innerHTML = '';
   L.profiles.forEach((p, i) => pl.append(el('div', { className: 'prow' + (i === pi ? ' on' : ''), textContent: p.name + (p.id === L.activeProfile ? '  ★' : ''), title: p.id === L.activeProfile ? 'Phone default' : '', onclick: () => { pi = i; gi = 0; sel = -1; draw(); } })));
   const tabs = $('pageTabs'); tabs.innerHTML = '';
-  prof().pages.forEach((p, i) => tabs.append(el('div', { className: 'tab' + (i === gi ? ' on' : ''), textContent: String(i + 1), title: p.name, onclick: () => { gi = i; sel = -1; draw(); } })));
+  let vis = 0;
+  prof().pages.forEach((p, i) => tabs.append(el('div', { className: 'tab' + (i === gi ? ' on' : '') + (p.hidden ? ' folder' : ''), textContent: p.hidden ? '📁 ' + p.name : String(++vis), title: p.name + (p.hidden ? ' (folder)' : ''), onclick: () => { gi = i; sel = -1; draw(); } })));
   tabs.append(el('div', { className: 'tab', textContent: '+', title: 'Add page', onclick: () => { prof().pages.push(newPage('Page ' + (prof().pages.length + 1), 4, 4)); gi = prof().pages.length - 1; sel = -1; changed(); } }));
   const pg = page(); $('cols').value = pg.cols; $('rows').value = pg.rows; $('styleSel').value = L.style === 'neon' ? 'neon' : 'flat';
   const bgKey = JSON.stringify(L.background || null);
   if (bgKey !== window.lastBg) { window.lastBg = bgKey; applyBg($('bgLayer'), L.background, L.bgDim); } else setBgDim($('bgLayer'), L.bgDim);
-  $('keyAlpha').value = L.keyAlpha == null ? 0.55 : L.keyAlpha; $('keyBlur').value = L.keyBlur || 0;
+  $('showLabels').checked = L.showLabels !== false; $('keyAlpha').value = L.keyAlpha == null ? 0.55 : L.keyAlpha; $('keyBlur').value = L.keyBlur || 0;
   $('bgDim').value = L.bgDim == null ? 0.25 : L.bgDim; $('bgPreset').value = L.background && L.background.type === 'preset' ? L.background.id : '';
   const g = $('grid'); g.innerHTML = ''; g.className = L.style === 'neon' ? '' : 'flat'; g.style.setProperty('--ar', pg.cols / pg.rows);
   g.style.gridTemplateColumns = `repeat(${pg.cols},minmax(0,1fr))`; g.style.gridTemplateRows = `repeat(${pg.rows},minmax(0,1fr))`;
+  const cov = coveredSet(pg);
   pg.slots.forEach((b, i) => {
+    if (cov.has(i)) return;
     const k = b ? keyNode(b) : el('div', { className: 'key empty', textContent: glyph('add') });
+    { const c = i % pg.cols, r = Math.floor(i / pg.cols); k.style.gridColumn = `${c + 1} / span ${Math.max(1, Math.min(b ? b.colSpan || 1 : 1, pg.cols - c))}`; k.style.gridRow = `${r + 1} / span ${Math.max(1, Math.min(b ? b.rowSpan || 1 : 1, pg.rows - r))}`; }
     if (i === sel) k.classList.add('sel');
     k.onclick = () => { sel = i; draw(); };
     if (b) { k.draggable = true; k.ondragstart = e => { dragFrom = i; e.dataTransfer.setData('text/plain', 'key'); e.dataTransfer.effectAllowed = 'move'; }; }
@@ -278,7 +311,7 @@ function draw(panel = true) {
       e.preventDefault(); k.classList.remove('over');
       const raw = e.dataTransfer.getData('application/x-sd');
       if (raw) { dropOn(i, JSON.parse(raw)); return; }
-      if (dragFrom >= 0 && dragFrom !== i) { [pg.slots[dragFrom], pg.slots[i]] = [pg.slots[i], pg.slots[dragFrom]]; sel = i; changed(); }
+      if (dragFrom >= 0 && dragFrom !== i) { [pg.slots[dragFrom], pg.slots[i]] = [pg.slots[i], pg.slots[dragFrom]]; [pg.slots[dragFrom], pg.slots[i]].forEach(s => { if (s) { s.colSpan = 1; s.rowSpan = 1; } }); sel = i; changed(); }
       dragFrom = -1;
     };
     g.append(k);
@@ -340,7 +373,13 @@ function drawPanel() {
   const wsel = el('select'); wsel.append(el('option', { value: '', textContent: 'None – normal key' }));
   WIDGETS.forEach(([v, t]) => wsel.append(el('option', { value: v, textContent: 'Live: ' + t, selected: b.widget === v })));
   wsel.onchange = () => { b.widget = wsel.value || null; changed(); };
-  p.append(field('Live tile', wsel));
+  p.append(field('Live tile / slider', wsel));
+  const ht = el('input', { type: 'checkbox', checked: !b.hideLabel }); ht.onchange = () => { b.hideLabel = !ht.checked; changed(true); };
+  p.append(el('label', { className: 'f', style: 'display:flex;gap:8px;align-items:center' }, ht, 'Show title on this key'));
+  const pg0 = page(), cs = el('input', { type: 'number', min: 1, max: pg0.cols, value: b.colSpan || 1 }), rs = el('input', { type: 'number', min: 1, max: pg0.rows, value: b.rowSpan || 1 });
+  const applySpan = () => { const ok = trySpan(pg0, sel, Math.max(1, +cs.value || 1), Math.max(1, +rs.value || 1)); if (!ok) { cs.value = b.colSpan || 1; rs.value = b.rowSpan || 1; } else changed(); };
+  cs.onchange = applySpan; rs.onchange = applySpan;
+  p.append(field('Size on the grid: cells wide × tall (make sliders taller)', el('div', { className: 'row' }, cs, el('span', { textContent: '×', style: 'flex:0' }), rs)));
 
   const q = el('input', { type: 'text', placeholder: 'Search icons (volume, mic, game…)' }), grid = el('div', { className: 'icons' });
   const fill = () => { grid.innerHTML = ''; const s = q.value.toLowerCase();
@@ -404,7 +443,7 @@ function drawPanel() {
   const test = el('button', { textContent: '▶ Test on this PC', className: 'pri', style: 'margin-top:12px' }), res = el('div', { className: 'hint' });
   test.onclick = async () => { res.textContent = 'Running…'; try { const r = await (await fetch('/api/test-action', { method: 'POST', body: JSON.stringify(b.action), ...J })).json(); res.textContent = r.ok ? ('Done' + (r.message ? ' – ' + r.message : '')) : 'Failed: ' + r.error; res.style.color = r.ok ? '#22e58b' : '#ff6b81'; } catch (e) { res.textContent = e.message; } };
   p.append(test, res, el('div', { className: 'row', style: 'margin-top:12px' },
-    el('button', { textContent: 'Duplicate', onclick: () => { const c = JSON.parse(JSON.stringify(b)); c.id = uid(); const pg = page(), i = pg.slots.findIndex(s => !s); if (i >= 0) { pg.slots[i] = c; sel = i; changed(); } else alert('Page is full'); } }),
+    el('button', { textContent: 'Duplicate', onclick: () => { const c = JSON.parse(JSON.stringify(b)); c.id = uid(); const pg = page(), cov = coveredSet(pg), i = pg.slots.findIndex((s, j) => !s && !cov.has(j)); if (i >= 0) { pg.slots[i] = c; sel = i; changed(); } else alert('Page is full'); } }),
     el('button', { className: 'danger', textContent: 'Remove', onclick: () => { page().slots[sel] = null; changed(); } })));
 }
 
@@ -418,6 +457,7 @@ function actionEditor(a, onValue, onStructure, allowMacro) {
     let inp;
     if (pm.kind === 'choice') { inp = el('select'); pm.options.forEach(o => inp.append(el('option', { value: o, textContent: o, selected: a[pm.k] === o }))); inp.onchange = () => { a[pm.k] = inp.value; onValue(); }; }
     else if (pm.kind === 'number') { inp = el('input', { type: 'number', value: a[pm.k] ?? '' }); inp.oninput = () => { a[pm.k] = parseInt(inp.value || '0', 10); onValue(); }; }
+    else if (pm.kind === 'page') { inp = el('select'); prof().pages.forEach(pgx => inp.append(el('option', { value: pgx.id, textContent: pgx.name + (pgx.hidden ? ' (folder)' : ''), selected: a[pm.k] === pgx.id }))); inp.onchange = () => { a[pm.k] = inp.value; onValue(); }; }
     else if (pm.kind === 'app') inp = appPicker(a, onValue);
     else { inp = el('input', { type: 'text', value: a[pm.k] ?? '', placeholder: pm.hint || '' }); inp.oninput = () => { a[pm.k] = inp.value; onValue(); }; }
     box.append(el('label', { className: 'f' }, pm.l, inp));
@@ -452,6 +492,7 @@ $('profRen').onclick = () => { const n = prompt('Rename profile', prof().name); 
 $('profDel').onclick = () => { if (L.profiles.length < 2) return alert('You need at least one profile.'); if (!confirm('Delete profile "' + prof().name + '"?')) return; const id = prof().id; L.profiles.splice(pi, 1); if (L.activeProfile === id) L.activeProfile = L.profiles[0].id; pi = 0; gi = 0; sel = -1; changed(); };
 $('profDefault').onclick = () => { L.activeProfile = prof().id; changed(); };
 $('styleSel').onchange = e => { L.style = e.target.value; changed(); };
+$('showLabels').onchange = e => { L.showLabels = e.target.checked; changed(true); };
 $('keyAlpha').oninput = e => { L.keyAlpha = +e.target.value; changed(true); };
 $('keyBlur').oninput = e => { L.keyBlur = +e.target.value; changed(true); };
 $('bgBtn').onclick = () => $('bgFile').click();

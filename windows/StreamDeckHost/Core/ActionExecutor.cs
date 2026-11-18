@@ -35,7 +35,7 @@ public sealed class ActionExecutor
         var type = Str(action, "type").ToLowerInvariant();
         switch (type)
         {
-            case "none": break; // live tile with no action
+            case "none": case "folder": case "back": break; // live tiles / client-side navigation
 
             // ---------- audio ----------
             case "volume_up": AudioControl.SetVolumeWithFlyout(AudioControl.GetVolume() + Int(action, "step", 5)); break;
