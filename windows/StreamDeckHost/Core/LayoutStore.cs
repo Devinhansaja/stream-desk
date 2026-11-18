@@ -144,6 +144,6 @@ public sealed class LayoutStore
             ["id"] = "default", ["name"] = "Default",
             ["pages"] = new JsonArray(home, stats, Page("Apps", 6, 4), Page("Games", 6, 4), Page("Streaming", 6, 4), Page("Page 6", 6, 4)),
         };
-        return new JsonObject { ["version"] = 1, ["style"] = "flat", ["background"] = null, ["activeProfile"] = "default", ["profiles"] = new JsonArray(prof) };
+        return new JsonObject { ["version"] = 1, ["style"] = "flat", ["background"] = null, ["keyAlpha"] = 0.55, ["keyBlur"] = 0, ["activeProfile"] = "default", ["profiles"] = new JsonArray(prof) };
     }
 }

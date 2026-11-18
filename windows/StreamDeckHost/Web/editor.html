@@ -97,6 +97,9 @@
       <div class="stack"><button id="pgRen">Rename page</button><button id="pgDel" class="danger">Delete page</button></div>
       <h3>Look</h3>
       <select id="styleSel" style="width:100%"><option value="flat">Flat</option><option value="neon">Neon glow</option></select>
+      <h3>Keys</h3>
+      <label class="f">Key opacity (lower = see background)</label><input type="range" id="keyAlpha" min="0" max="1" step="0.05" style="width:100%">
+      <label class="f">Glass blur</label><input type="range" id="keyBlur" min="0" max="20" step="1" style="width:100%">
       <h3>Live background</h3>
       <div class="stack"><button id="bgBtn">Upload image / GIF / video…</button></div>
       <select id="bgPreset" style="width:100%;margin-top:6px"><option value="">Animated preset…</option><option value="aurora">Aurora</option><option value="grid">Neon grid</option><option value="waves">Waves</option><option value="stars">Stars</option></select>
@@ -199,7 +202,11 @@ function keyNode(b) {
   if (neon) {
     k.style.background = `linear-gradient(180deg,${rgba(b.color1, .3)},#080818) padding-box, linear-gradient(135deg,${b.color1},${b.color2}) border-box`;
     k.style.boxShadow = `0 0 ${Math.round(4 + 22 * b.glow)}px ${rgba(b.color1, .15 + .45 * b.glow)}`; k.style.borderRadius = '20px';
-  } else { k.style.background = 'rgba(0,0,0,.84)'; k.style.border = `2px solid ${rgba(b.color1, .75)}`; }
+  } else {
+    const fa = b.fillAlpha != null ? b.fillAlpha : (L.keyAlpha != null ? L.keyAlpha : 0.55);
+    k.style.background = rgba(b.fill || '#000000', fa); k.style.border = `2px solid ${rgba(b.color1, .75)}`;
+    if (L.keyBlur) k.style.backdropFilter = `blur(${L.keyBlur}px)`;
+  }
   const tint = `color-mix(in srgb, ${b.color1} 70%, white)`;
   if (b.widget) k.append(el('div', { className: 'val', textContent: widgetText(b.widget), style: `color:${tint}` }));
   else if (b.image) k.append(el('img', { src: b.image }));
@@ -256,6 +263,7 @@ function draw(panel = true) {
   const pg = page(); $('cols').value = pg.cols; $('rows').value = pg.rows; $('styleSel').value = L.style === 'neon' ? 'neon' : 'flat';
   const bgKey = JSON.stringify(L.background || null);
   if (bgKey !== window.lastBg) { window.lastBg = bgKey; applyBg($('bgLayer'), L.background, L.bgDim); } else setBgDim($('bgLayer'), L.bgDim);
+  $('keyAlpha').value = L.keyAlpha == null ? 0.55 : L.keyAlpha; $('keyBlur').value = L.keyBlur || 0;
   $('bgDim').value = L.bgDim == null ? 0.25 : L.bgDim; $('bgPreset').value = L.background && L.background.type === 'preset' ? L.background.id : '';
   const g = $('grid'); g.innerHTML = ''; g.className = L.style === 'neon' ? '' : 'flat'; g.style.setProperty('--ar', pg.cols / pg.rows);
   g.style.gridTemplateColumns = `repeat(${pg.cols},minmax(0,1fr))`; g.style.gridTemplateRows = `repeat(${pg.rows},minmax(0,1fr))`;
@@ -381,6 +389,13 @@ function drawPanel() {
     return field(label, el('div', { className: 'sw' }, PALETTE.map(h => { const i = el('i'); i.style.background = h; i.onclick = () => { b[key] = h; changed(); }; return i; }), c)); };
   p.append(colorRow(L.style === 'neon' ? 'Border / gradient start' : 'Color', 'color1'));
   if (L.style === 'neon') { p.append(colorRow('Gradient end', 'color2')); const gl = el('input', { type: 'range', min: 0, max: 1, step: 0.05, value: b.glow }); gl.oninput = () => { b.glow = +gl.value; changed(true); }; p.append(field('Glow', gl)); }
+  const fillC = el('input', { type: 'color', value: b.fill || '#000000' }); fillC.oninput = () => { b.fill = fillC.value; changed(true); };
+  p.append(field('Key background', el('div', { className: 'sw' },
+    el('button', { textContent: 'Transparent', onclick: () => { b.fillAlpha = 0; changed(); } }),
+    el('button', { textContent: 'Default', onclick: () => { b.fill = null; b.fillAlpha = null; changed(); } }), fillC)));
+  const fa = el('input', { type: 'range', min: 0, max: 1, step: 0.05, value: b.fillAlpha != null ? b.fillAlpha : (L.keyAlpha != null ? L.keyAlpha : 0.55) });
+  fa.oninput = () => { b.fillAlpha = +fa.value; changed(true); };
+  p.append(field('Opacity of this key', fa));
   const cf = el('input', { type: 'checkbox', checked: b.confirm }); cf.onchange = () => { b.confirm = cf.checked; changed(); };
   p.append(el('label', { className: 'f', style: 'display:flex;gap:8px;align-items:center' }, cf, 'Ask for confirmation on the phone'));
 
@@ -437,6 +452,8 @@ $('profRen').onclick = () => { const n = prompt('Rename profile', prof().name); 
 $('profDel').onclick = () => { if (L.profiles.length < 2) return alert('You need at least one profile.'); if (!confirm('Delete profile "' + prof().name + '"?')) return; const id = prof().id; L.profiles.splice(pi, 1); if (L.activeProfile === id) L.activeProfile = L.profiles[0].id; pi = 0; gi = 0; sel = -1; changed(); };
 $('profDefault').onclick = () => { L.activeProfile = prof().id; changed(); };
 $('styleSel').onchange = e => { L.style = e.target.value; changed(); };
+$('keyAlpha').oninput = e => { L.keyAlpha = +e.target.value; changed(true); };
+$('keyBlur').oninput = e => { L.keyBlur = +e.target.value; changed(true); };
 $('bgBtn').onclick = () => $('bgFile').click();
 $('bgClr').onclick = () => { L.background = null; changed(); };
 $('bgPreset').onchange = e => { L.background = e.target.value ? { type: 'preset', id: e.target.value } : null; changed(); };
