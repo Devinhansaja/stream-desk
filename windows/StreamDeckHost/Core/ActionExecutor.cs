@@ -13,6 +13,7 @@ public sealed class ActionExecutor
 {
     readonly SettingsStore store;
     public ActionExecutor(SettingsStore store) => this.store = store;
+    public DiscordRpc? Discord { get; set; }
 
     static string Str(JsonNode n, string key, string def = "") =>
         n[key] is JsonValue v && v.TryGetValue<string>(out var s) ? s : def;
@@ -35,6 +36,9 @@ public sealed class ActionExecutor
         var type = Str(action, "type").ToLowerInvariant();
         switch (type)
         {
+            case "discord_mute_toggle": await (Discord ?? throw new InvalidOperationException("Discord is not set up")).ToggleMuteAsync(); break;
+            case "discord_deafen_toggle": await (Discord ?? throw new InvalidOperationException("Discord is not set up")).ToggleDeafenAsync(); break;
+            case "discord_disconnect": await (Discord ?? throw new InvalidOperationException("Discord is not set up")).DisconnectAsync(); break;
             case "none": case "folder": case "back": break; // live tiles / client-side navigation
 
             // ---------- audio ----------

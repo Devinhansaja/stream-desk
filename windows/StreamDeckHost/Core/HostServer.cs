@@ -34,6 +34,7 @@ public sealed class HostServer : IDisposable
     readonly ActionExecutor exec;
     readonly LayoutStore layout;
     public ActionExecutor Exec => exec;
+    public DiscordRpc Discord { get; } = new();
     readonly ConcurrentDictionary<Guid, Client> clients = new();
     readonly ConcurrentDictionary<string, (int fails, DateTime until)> failures = new();
     readonly CancellationTokenSource cts = new();
@@ -61,6 +62,8 @@ public sealed class HostServer : IDisposable
         this.layout = layout;
         exec = new ActionExecutor(store);
         layout.Changed += () => _ = BroadcastLayout();
+        exec.Discord = Discord;
+        Discord.Changed += () => _ = BroadcastDiscord();
         Tunnel = new Tunnel(store.Data.Port);
         Tunnel.Changed += () => { WriteDevPairing(); Changed?.Invoke(); };
     }
@@ -179,6 +182,7 @@ public sealed class HostServer : IDisposable
         L($"Listening on port {Port}");
 
         StartDiscovery();
+        Discord.Start();
         if (store.Data.InternetTunnel) Tunnel.Start();
         _ = Task.Run(StatusLoop);
         _ = Task.Run(MediaLoop);
@@ -523,6 +527,7 @@ public sealed class HostServer : IDisposable
         L($"Paired new device: {name}");
         await Send(c, new JsonObject { ["t"] = "paired", ["token"] = token, ["host"] = PcName });
         await Send(c, await BuildStatus(true));
+        await Send(c, Discord.Snapshot());
         Changed?.Invoke();
     }
 
@@ -543,6 +548,7 @@ public sealed class HostServer : IDisposable
         foreach (var a in AllAddresses()) hostsArr.Add(a);
         await Send(c, new JsonObject { ["t"] = "auth_ok", ["host"] = PcName, ["hosts"] = hostsArr });
         await Send(c, await BuildStatus(true));
+        await Send(c, Discord.Snapshot());
         Changed?.Invoke();
     }
 
@@ -594,6 +600,14 @@ public sealed class HostServer : IDisposable
             catch (OperationCanceledException) { break; }
             catch { }
         }
+    }
+
+    async Task BroadcastDiscord()
+    {
+        if (ConnectedCount == 0) return;
+        var snap = Discord.Snapshot();
+        foreach (var c in clients.Values.Where(x => x.Device != null))
+            await Send(c, JsonNode.Parse(snap.ToJsonString())!.AsObject());
     }
 
     async Task BroadcastLayout()

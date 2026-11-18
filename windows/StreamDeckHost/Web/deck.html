@@ -81,6 +81,16 @@
   .key.slider .fill { position:absolute; left:0; bottom:0; width:100%; height:0; opacity:.6; transition:height .1s, width .1s; }
   .key.slider .ic, .key.slider .sval, .key.slider .lb { position:relative; z-index:1; }
   .key .sval { font-size:max(14px,18cqmin); font-weight:800; line-height:1; }
+  .dcw { position:absolute; inset:0; display:flex; flex-direction:column; padding:calc(14px + env(safe-area-inset-top)) 14px 14px; gap:12px; background:rgba(0,0,0,.35); }
+  .dcw .dh { display:flex; align-items:baseline; gap:10px; } .dcw .dh b { font-size:22px; } .dcw .dh span { opacity:.75; font-size:14px; }
+  .dusers { flex:1; min-height:0; overflow:auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(92px,1fr)); gap:12px; align-content:start; }
+  .du { text-align:center; position:relative; } .du img { width:100%; aspect-ratio:1; border-radius:50%; object-fit:cover; background:#202225; border:3px solid transparent; transition:box-shadow .12s,border-color .12s; }
+  .du.noimg::before { content:attr(data-l); position:absolute; left:0; right:0; top:0; aspect-ratio:1; border-radius:50%; background:#5865f2; display:grid; place-items:center; font-size:34px; font-weight:700; z-index:0; }
+  .du.noimg.speaking::before { box-shadow:0 0 0 3px #23a55966, 0 0 18px #23a559; border:3px solid #23a559; box-sizing:border-box; }
+  .du.speaking img { border-color:#23a559; box-shadow:0 0 0 3px #23a55966, 0 0 18px #23a559; } .du.muted img { opacity:.55; }
+  .du .dn { margin-top:6px; font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .du .db { position:absolute; top:0; right:8px; font-size:15px; text-shadow:0 1px 3px #000; }
+  .dbtns { display:flex; gap:10px; } .dbtns button { flex:1; font:inherit; font-weight:700; color:#fff; background:#2b2d31; border:2px solid #5865f2; border-radius:16px; padding:18px 6px; font-size:16px; }
+  .dbtns button.on { background:#ed4245; border-color:#ed4245; } .dbtns button.leave { border-color:#ed4245; color:#ff7a7c; } .dbtns button i { display:none; }
   #empty { margin:auto; text-align:center; color:#aaa; padding:30px; }
 </style>
 </head>
@@ -166,10 +176,11 @@ function render() {
   dots.style.display = shown.length > 1 ? 'flex' : 'none';
   curPage = Math.min(curPage, shown.length - 1);
   host.scrollTo({ left: curPage * host.clientWidth });
-  markDots(); refreshActive(); refreshWidgets(); refreshSliders(); setConn(connected ? 'on' : 'off'); activate();
+  markDots(); refreshActive(); refreshWidgets(); refreshSliders(); setConn(connected ? 'on' : 'off'); activate(); renderDiscord(); autoDiscordPage();
 }
 
 // ---- widget pages: clock, lyrics, YouTube, PC screen -------------------------------------------------
+let discord = { rpc: 'off', status: '', inCall: false, channel: '', users: [], mute: false, deaf: false }, autoOpened = false, dismissedCall = false, prevPage = 0;
 let shownPages = [], subMedia = false, subScreen = false, med = null, lyr = { key: '', lines: [] }, lyIdx = -1, frameUrl = null;
 const curKind = () => { const p = shownPages[curPage]; return p && p.kind; };
 function sub(type, on) { send({ t: type, on }); }
@@ -209,6 +220,11 @@ function widgetPage(pg) {
     f.dataset.src = ytEmbed(pg.url || ''); f.setAttribute('src', 'about:blank');
     el.append(f);
     if (!pg.url) { const m = document.createElement('div'); m.className = 'wmsg'; m.textContent = 'Set a YouTube link for this page in the PC editor.'; el.append(m); }
+  } else if (pg.kind === 'discord') {
+    const w = document.createElement('div'); w.className = 'dcw';
+    w.innerHTML = '<div class="dh"><b></b><span></span></div><div class="dusers"></div><div class="dbtns"><button data-a="discord_mute_toggle"><i></i>Mute</button><button data-a="discord_deafen_toggle"><i></i>Deafen</button><button data-a="discord_disconnect" class="leave"><i></i>Leave</button></div>';
+    w.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { native('h'); if (!connected) { toast('Not connected to the PC'); return; } const id = nextId++; pending[id] = r => { if (!r.ok) toast(r.error || 'Failed'); }; send({ t: 'action', id, action: { type: b.dataset.a } }); }));
+    el.append(w); setTimeout(renderDiscord, 0);
   } else if (pg.kind === 'screen') {
     const img = document.createElement('img'); img.className = 'scrw'; img.alt = ''; el.append(img);
     const m = document.createElement('div'); m.className = 'wmsg'; m.textContent = 'Connecting to PC screen…'; m.id = 'scrMsg'; el.append(m);
@@ -216,6 +232,48 @@ function widgetPage(pg) {
   }
   return el;
 }
+// ---- Discord call page ------------------------------------------------------------------------
+function dAvatar(u) {
+  if (u.avatar) return `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=128`;
+  let n = 0; try { n = Number((BigInt(u.id) >> 22n) % 6n); } catch (e) {}
+  return `https://cdn.discordapp.com/embed/avatars/${n}.png`;
+}
+function renderDiscord() {
+  document.querySelectorAll('.dcw').forEach(w => {
+    const h = w.querySelector('.dh b'), s = w.querySelector('.dh span'), box = w.querySelector('.dusers');
+    if (discord.inCall) { h.textContent = '🔊 ' + (discord.channel || 'Voice'); s.textContent = discord.users.length + ' in call'; }
+    else { h.textContent = 'Discord'; s.textContent = discord.rpc === 'ok' ? 'Not in a call' : (discord.status || 'Not set up (PC: StreamDeck Host > Discord)'); }
+    const keep = new Set();
+    discord.users.forEach(u => {
+      keep.add(u.id);
+      let t = box.querySelector(`[data-u="${u.id}"]`);
+      if (!t) { t = document.createElement('div'); t.className = 'du'; t.dataset.u = u.id; t.dataset.l = (u.name || '?').trim().charAt(0).toUpperCase(); const im = document.createElement('img'); im.src = dAvatar(u); im.onerror = () => { im.style.visibility = 'hidden'; t.classList.add('noimg'); }; const nm = document.createElement('div'); nm.className = 'dn'; const bd = document.createElement('div'); bd.className = 'db'; t.append(im, nm, bd); box.append(t); }
+      t.querySelector('.dn').textContent = u.name;
+      t.querySelector('.db').textContent = u.deaf ? '🎧✕' : (u.mute ? '🎙✕' : '');
+      t.classList.toggle('speaking', !!u.speaking); t.classList.toggle('muted', !!(u.mute || u.deaf));
+    });
+    box.querySelectorAll('.du').forEach(t => { if (!keep.has(t.dataset.u)) t.remove(); });
+    const m = w.querySelector('[data-a="discord_mute_toggle"]'), d = w.querySelector('[data-a="discord_deafen_toggle"]');
+    m.classList.toggle('on', !!discord.mute); m.lastChild.textContent = discord.mute ? 'Unmute' : 'Mute';
+    d.classList.toggle('on', !!discord.deaf); d.lastChild.textContent = discord.deaf ? 'Undeafen' : 'Deafen';
+    w.querySelector('.leave').style.opacity = discord.inCall ? 1 : .4;
+  });
+}
+/** Jump to the Discord page when a call starts; go back when it ends. Swiping away during a call is respected. */
+function autoDiscordPage() {
+  if (folderId) { if (discord.inCall) { /* keep the folder; the user is busy */ } return; }
+  const idx = shownPages.findIndex(p => p.kind === 'discord' && p.autoOpen !== false);
+  if (idx < 0) return;
+  const host = $('pages');
+  if (discord.inCall && !autoOpened && !dismissedCall) {
+    autoOpened = true; prevPage = curPage;
+    if (curPage !== idx) { curPage = idx; host.scrollTo({ left: idx * host.clientWidth }); markDots(); activate(); }
+  } else if (!discord.inCall) {
+    if (autoOpened) { autoOpened = false; const back = Math.min(prevPage, shownPages.length - 1); if (curPage === idx && back !== idx) { curPage = back; host.scrollTo({ left: back * host.clientWidth }); markDots(); activate(); } }
+    dismissedCall = false;
+  }
+}
+
 function ytEmbed(u) {
   u = u.trim(); if (!u) return 'about:blank';
   const p = '&autoplay=1&playsinline=1&rel=0&modestbranding=1';
@@ -345,13 +403,13 @@ function refreshSliders() {
 function refreshActive() {
   document.querySelectorAll('.key').forEach(k => {
     const t = k._b && k._b.action && k._b.action.type;
-    k.classList.toggle('act', (t === 'mute_toggle' && status.muted === true) || (t === 'mic_toggle' && status.micMuted === true));
+    k.classList.toggle('act', (t === 'mute_toggle' && status.muted === true) || (t === 'mic_toggle' && status.micMuted === true) || (t === 'discord_mute_toggle' && discord.mute) || (t === 'discord_deafen_toggle' && discord.deaf));
   });
 }
 function markDots() { [...$('dots').children].forEach((d, i) => d.classList.toggle('on', i === curPage)); }
 $('pages').addEventListener('scroll', () => {
   const h = $('pages'); const i = Math.round(h.scrollLeft / Math.max(1, h.clientWidth));
-  if (i !== curPage) { curPage = i; markDots(); activate(); const d = $('dots'); d.classList.add('show'); clearTimeout(dotsT); dotsT = setTimeout(() => d.classList.remove('show'), 1200); }
+  if (i !== curPage) { curPage = i; if (autoOpened && shownPages[i] && shownPages[i].kind !== 'discord') { autoOpened = false; dismissedCall = true; } markDots(); activate(); const d = $('dots'); d.classList.add('show'); clearTimeout(dotsT); dotsT = setTimeout(() => d.classList.remove('show'), 1200); }
 }, { passive: true });
 
 const send = o => { if (ws && ws.readyState === 1) { ws.send(JSON.stringify(o)); return true; } return false; };
@@ -390,6 +448,7 @@ function onMsg(m) {
     case 'auth_ok': fails = 0; setConn('on'); resetSubs(); if (m.hosts) native('hosts:' + JSON.stringify(m.hosts)); send({ t: 'layout_get', id: 0 }); break;
     case 'auth_fail': native('unpaired'); break;
     case 'status': status = m; refreshActive(); refreshWidgets(); refreshSliders(); break;
+    case 'discord': discord = m; renderDiscord(); refreshActive(); autoDiscordPage(); break;
     case 'layout': setLayout(m.layout); break;
   }
 }

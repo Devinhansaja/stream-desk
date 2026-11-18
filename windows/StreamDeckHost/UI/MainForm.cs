@@ -92,7 +92,7 @@ public sealed class MainForm : Form
         };
 
         var nav = new Panel { Dock = DockStyle.Left, Width = 200, BackColor = Panel, Padding = new Padding(12, 16, 12, 12) };
-        string[] names = { "Editor", "Pairing", "Internet", "Devices", "Activity", "Settings" };
+        string[] names = { "Editor", "Pairing", "Discord", "Internet", "Devices", "Activity", "Settings" };
         for (int i = names.Length - 1; i >= 0; i--)
         {
             var name = names[i];
@@ -110,6 +110,7 @@ public sealed class MainForm : Form
         var content = new Panel { Dock = DockStyle.Fill, BackColor = Bg, Padding = new Padding(12) };
         pages["Editor"] = BuildEditorPage();
         pages["Pairing"] = BuildPairingPage();
+        pages["Discord"] = BuildDiscordPage();
         pages["Internet"] = BuildInternetPage();
         pages["Devices"] = BuildDevicesPage();
         pages["Activity"] = BuildActivityPage();
@@ -157,7 +158,48 @@ public sealed class MainForm : Form
     }
 
     readonly Label tunnelLabel = new();
+    readonly Label discordLabel = new();
 
+    Control BuildDiscordPage()
+    {
+        var p = new Panel();
+        p.Controls.Add(H("Discord call page", 0, 0));
+        p.Controls.Add(H("When you join a Discord voice call, the phone jumps to a \"Discord call\" page: channel, who is in the call, who is speaking, and\nbig Mute / Deafen / Leave buttons. Discord must be running on this PC.", 0, 36, 10f, Muted));
+
+        p.Controls.Add(H("Quick connect (no setup)", 0, 96, 12f));
+        p.Controls.Add(H("Press the button, then click Authorize in the popup that appears inside the Discord app. Done.\nThis uses Discord's own StreamKit app, which is an unofficial route that Discord could change. If it stops working, use the option below.", 0, 126, 9.5f, Muted));
+        p.Controls.Add(Btn("Connect my Discord", 0, 176, 200, Purple, (_, _) =>
+        {
+            var a = DiscordAuth.Load(); a.Enabled = true; a.ClientId = ""; a.Secret = ""; a.AccessToken = ""; a.RefreshToken = ""; a.Expires = default; a.Save();
+            server.Discord.Reconfigure();
+        }));
+        p.Controls.Add(Btn("Disconnect", 216, 176, 150, Panel2, (_, _) =>
+        {
+            var a = DiscordAuth.Load(); a.Enabled = false; a.AccessToken = ""; a.RefreshToken = ""; a.Expires = default; a.Save();
+            server.Discord.Reconfigure();
+        }));
+        discordLabel.Location = new Point(0, 224); discordLabel.AutoSize = true; discordLabel.ForeColor = Fg;
+        p.Controls.Add(discordLabel);
+
+        p.Controls.Add(H("Advanced: use your own Discord application (the supported route)", 0, 290, 11f));
+        p.Controls.Add(H("Developer Portal > New Application > copy the Application ID > OAuth2: add redirect  http://localhost  and Reset Secret to copy the Client Secret.", 0, 318, 9.5f, Muted));
+        var auth = DiscordAuth.Load();
+        var id = new TextBox { Location = new Point(0, 346), Width = 330, Text = auth.ClientId, BackColor = Panel, ForeColor = Fg, BorderStyle = BorderStyle.FixedSingle };
+        var sec = new TextBox { Location = new Point(344, 346), Width = 330, UseSystemPasswordChar = true, Text = auth.Secret.Length > 0 ? "********" : "", BackColor = Panel, ForeColor = Fg, BorderStyle = BorderStyle.FixedSingle };
+        p.Controls.Add(id); p.Controls.Add(sec);
+        p.Controls.Add(Btn("Save and connect", 0, 384, 170, Panel2, (_, _) =>
+        {
+            var a = DiscordAuth.Load();
+            a.Enabled = true; a.ClientId = id.Text.Trim();
+            if (sec.Text != "********") a.Secret = sec.Text.Trim();
+            a.AccessToken = ""; a.RefreshToken = ""; a.Expires = default; a.Save();
+            server.Discord.Reconfigure();
+        }));
+        p.Controls.Add(Btn("Open developer portal", 186, 384, 190, Panel2, (_, _) =>
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://discord.com/developers/applications") { UseShellExecute = true })));
+        p.Controls.Add(H("Your login is stored encrypted for your Windows account. The phone page is in the default layout (+ Widget page > Discord call).", 0, 440, 9.5f, Muted));
+        return p;
+    }
     Control BuildInternetPage()
     {
         var p = new Panel();
@@ -302,6 +344,7 @@ public sealed class MainForm : Form
         int n = server.ConnectedCount;
         statusLabel.Text = "● Running on port " + server.Port;
         statusLabel.ForeColor = Green;
+        discordLabel.Text = "Status: " + server.Discord.StatusText + (server.Discord.InCall ? $"\nIn call: {server.Discord.Channel}  (mic muted: {server.Discord.SelfMute}, deafened: {server.Discord.SelfDeaf})" : "");
         tunnelLabel.Text = "Status: " + server.Tunnel.Status + (server.Tunnel.Url != null ? "\nAddress: " + server.Tunnel.Url : "");
         connectedLabel.Text = n == 0 ? "No phone connected" : $"{n} phone{(n == 1 ? "" : "s")} connected";
 

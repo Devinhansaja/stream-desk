@@ -160,11 +160,14 @@ const ACTIONS = [
   { type:'shutdown', label:'Shut down', cat:'Power', icon:'power_settings_new', params:[] },
   { type:'macro', label:'Macro (several steps)', cat:'Flow', icon:'bolt', params:[] },
   { type:'delay', label:'Wait (macro step)', cat:'Flow', icon:'timer', params:[{k:'ms',l:'Milliseconds',kind:'number',def:500}] },
+  { type:'discord_mute_toggle', label:'Discord: mute / unmute', cat:'Discord', icon:'mic_off', params:[] },
+  { type:'discord_deafen_toggle', label:'Discord: deafen / undeafen', cat:'Discord', icon:'headset_off', params:[] },
+  { type:'discord_disconnect', label:'Discord: leave call', cat:'Discord', icon:'call_end', params:[] },
   { type:'none', label:'Do nothing (display only)', cat:'Flow', icon:'block', params:[] },
   { type:'folder', label:'Folder (a group of keys)', cat:'Flow', icon:'folder', params:[{k:'pageId',l:'Opens this folder page',kind:'page'}] },
   { type:'back', label:'Back (close folder)', cat:'Flow', icon:'arrow_back', params:[] },
 ];
-const CAT_COLORS = { Audio:['#1e90ff','#00e5ff'], Display:['#ffc400','#ff6d00'], Input:['#7c4dff','#d500f9'], Launch:['#00e676','#1b5e20'], Power:['#ff1744','#b71c1c'], Flow:['#b0bec5','#455a64'] };
+const CAT_COLORS = { Discord:['#5865f2','#3b4cc0'], Audio:['#1e90ff','#00e5ff'], Display:['#ffc400','#ff6d00'], Input:['#7c4dff','#d500f9'], Launch:['#00e676','#1b5e20'], Power:['#ff1744','#b71c1c'], Flow:['#b0bec5','#455a64'] };
 const WIDGETS = [['cpu','CPU %','memory'],['ram','RAM %','developer_board'],['uptime','PC uptime','schedule'],['clock','Clock','access_time'],['volume','Volume','volume_up'],['brightness','Brightness','brightness_6'],['disk:C','Disk C: free','storage'],['disk:D','Disk D: free','storage'],['disk:E','Disk E: free','storage'],['slider:volume','Volume slider','tune'],['slider:brightness','Brightness slider','brightness_6']];
 const def = t => ACTIONS.find(a => a.type === t) || ACTIONS[0];
 const defaults = t => { const a = { type: t }; def(t).params.forEach(p => { if (p.def !== undefined) a[p.k] = p.def; }); if (t === 'macro') a.steps = []; return a; };
@@ -286,6 +289,7 @@ const WKIND = {
   clock:   { icon: '⏰', name: 'Clock',            defaults: { style: 'digital', hour12: true }, about: 'A big clock with the date. Digital or analog.' },
   lyrics:  { icon: '🎵', name: 'Lyrics',           about: 'Shows the song playing on the PC (Spotify, YouTube Music, browser…) with time-synced lyrics from LRCLIB. Needs the phone connected to the PC; the PC needs internet to fetch lyrics.' },
   youtube: { icon: '▶',  name: 'YouTube video',    defaults: { url: '' }, about: 'Plays a YouTube video or playlist on the phone itself (the phone needs internet). Plays only while this page is on screen.' },
+  discord: { icon: '🎮', name: 'Discord call', defaults: { autoOpen: true }, about: 'Shows your Discord voice call on the phone: channel, who is in it, who is speaking, plus Mute / Deafen / Leave buttons. Set it up once in StreamDeck Host > Discord (needs a free Discord application). Discord must be running on the PC.' },
   screen:  { icon: '🖥', name: 'PC screen (2nd display)', about: 'Mirrors your PC screen on the phone. Tap = click, long-press = right-click, drag = move/drag. Windows cannot make a phone a true extended monitor without a driver, so this shows the main monitor.' },
 };
 function drawWidgetPage(pg, g, withPanel) {
@@ -301,6 +305,9 @@ function drawWidgetPage(pg, g, withPanel) {
   if (pg.kind === 'clock') {
     p.append(field('Style', el('select', { onchange: e => { pg.style = e.target.value; changed(true); } }, el('option', { value: 'digital', textContent: 'Digital', selected: pg.style !== 'analog' }), el('option', { value: 'analog', textContent: 'Analog', selected: pg.style === 'analog' }))));
     p.append(el('label', { className: 'f', style: 'display:flex;gap:8px;align-items:center' }, el('input', { type: 'checkbox', checked: pg.hour12 !== false, onchange: e => { pg.hour12 = e.target.checked; changed(true); } }), '12-hour time (digital)'));
+  }
+  if (pg.kind === 'discord') {
+    p.append(el('label', { className: 'f', style: 'display:flex;gap:8px;align-items:center' }, el('input', { type: 'checkbox', checked: pg.autoOpen !== false, onchange: e => { pg.autoOpen = e.target.checked; changed(true); } }), 'Open this page automatically when I join a Discord call'));
   }
   if (pg.kind === 'youtube') {
     p.append(field('YouTube link (video or playlist)', el('input', { type: 'text', value: pg.url || '', placeholder: 'https://www.youtube.com/watch?v=…', onchange: e => { pg.url = e.target.value.trim(); changed(true); } })));

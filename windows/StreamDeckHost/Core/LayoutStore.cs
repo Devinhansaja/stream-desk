@@ -27,6 +27,7 @@ public sealed class LayoutStore
             }
             catch { layout = Default(); }
         }
+        EnsureDiscordPage();
     }
 
     public string Json() { lock (gate) return layout.ToJsonString(); }
@@ -95,6 +96,27 @@ public sealed class LayoutStore
         return new JsonObject { ["id"] = Guid.NewGuid().ToString("N")[..12], ["name"] = name, ["cols"] = cols, ["rows"] = rows, ["slots"] = slots };
     }
 
+    /// <summary>Full-page "Discord call" widget (participants, speaking, mute/deafen/leave). Opens by itself when you join a call.</summary>
+    public static JsonObject DiscordPage()
+    {
+        var slots = new JsonArray(); slots.Add(null);
+        return new JsonObject { ["id"] = Guid.NewGuid().ToString("N")[..12], ["name"] = "Discord call", ["cols"] = 1, ["rows"] = 1, ["slots"] = slots, ["kind"] = "discord", ["autoOpen"] = true };
+    }
+
+    /// <summary>Existing layouts get the Discord page once (deleting it afterwards sticks).</summary>
+    void EnsureDiscordPage()
+    {
+        lock (gate)
+        {
+            if (layout["discordAdded"]?.GetValue<bool>() == true) return;
+            layout["discordAdded"] = true;
+            if (layout["profiles"] is JsonArray ps && ps.Count > 0 && ps[0]?["pages"] is JsonArray pages
+                && !pages.Any(p => p?["kind"]?.GetValue<string>() == "discord"))
+                pages.Add(DiscordPage());
+            try { File.WriteAllText(FilePath, layout.ToJsonString()); } catch { }
+        }
+    }
+
     static JsonObject Tile(string label, string widget, string color)
     {
         var b = Btn(label, "bolt", color, color, A("none"));
@@ -142,8 +164,8 @@ public sealed class LayoutStore
         var prof = new JsonObject
         {
             ["id"] = "default", ["name"] = "Default",
-            ["pages"] = new JsonArray(home, stats, Page("Apps", 6, 4), Page("Games", 6, 4), Page("Streaming", 6, 4), Page("Page 6", 6, 4)),
+            ["pages"] = new JsonArray(home, stats, Page("Apps", 6, 4), Page("Games", 6, 4), Page("Streaming", 6, 4), Page("Page 6", 6, 4), DiscordPage()),
         };
-        return new JsonObject { ["version"] = 1, ["style"] = "flat", ["background"] = null, ["keyAlpha"] = 0.55, ["keyBlur"] = 0, ["activeProfile"] = "default", ["profiles"] = new JsonArray(prof) };
+        return new JsonObject { ["version"] = 1, ["discordAdded"] = true, ["style"] = "flat", ["background"] = null, ["keyAlpha"] = 0.55, ["keyBlur"] = 0, ["activeProfile"] = "default", ["profiles"] = new JsonArray(prof) };
     }
 }

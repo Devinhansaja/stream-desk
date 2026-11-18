@@ -214,6 +214,9 @@ public static class WebEndpoints
             catch (Exception e) { return Results.Json(new { error = e.Message }, statusCode: 502); }
         });
 
+        app.MapGet("/api/discord", (HttpContext c) =>
+            IsLocalEditor(c, port) ? Results.Text(server.Discord.Snapshot().ToJsonString(), "application/json") : Results.StatusCode(403));
+
         app.MapGet("/api/info", (HttpContext c) =>
             !IsLocalEditor(c, port)
                 ? Results.StatusCode(403)
