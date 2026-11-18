@@ -27,6 +27,12 @@ docs/PROTOCOL.md        Wire protocol and action reference
 
 ### Connection
 * **Wi-Fi:** same network as the PC. The phone remembers addresses and re-discovers the PC by UDP broadcast if its IP changes.
+* **Any network (away from home):** host → **Internet** tab. Three options, all still require pairing:
+  1. *Free tunnel* – tick "Turn on internet access" (needs `winget install Cloudflare.cloudflared`). You get an `https://….trycloudflare.com`
+     address that is added to the QR code. It changes on each host restart; phones learn the new one whenever they connect.
+  2. *Tailscale* – install it on PC and phone (same account). The 100.x address is added to the QR automatically; stable and private.
+  3. *Your own address* – DDNS / port-forward / own tunnel, entered in the Internet tab.
+  The phone tries every saved address in parallel and uses the first that answers (home Wi-Fi wins when you're home).
 * **USB:** USB debugging on, cable in; the host runs `adb reverse` automatically (adb must be on PATH or in the Android SDK).
 * The deck reconnects automatically. If it can't connect, the phone shows the reason and a Try again / Pair again button.
 
@@ -56,7 +62,8 @@ APK is debug-signed (fine for sideloading). Without local tools, push a tag and 
 * Unauthenticated sockets can do nothing; 5 bad attempts lock an IP for a minute.
 * The editor and its API answer only to `localhost` on the PC (loopback + Host check + custom header + same-origin), not to the LAN.
 * Raw shell commands are **off** by default (host → Settings).
-* **Limit:** traffic is plain `ws://` / `http://` on your LAN (no TLS). Use trusted networks or USB.
+* The editor stays PC-only even with the tunnel on (tunnel traffic fails the Host-header check, verified: `/editor` and `/api` return 403).
+* **Limit:** on your LAN traffic is plain `ws://` / `http://` (no TLS); the tunnel and Tailscale are encrypted. Use trusted networks, USB, or those.
 
 ## Not verified on real hardware
 Everything below the PC is tested (29 protocol checks incl. layout sync and editor access rules; auto-update swap tested with a

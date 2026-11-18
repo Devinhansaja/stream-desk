@@ -92,7 +92,7 @@ public sealed class MainForm : Form
         };
 
         var nav = new Panel { Dock = DockStyle.Left, Width = 200, BackColor = Panel, Padding = new Padding(12, 16, 12, 12) };
-        string[] names = { "Editor", "Pairing", "Devices", "Activity", "Settings" };
+        string[] names = { "Editor", "Pairing", "Internet", "Devices", "Activity", "Settings" };
         for (int i = names.Length - 1; i >= 0; i--)
         {
             var name = names[i];
@@ -110,6 +110,7 @@ public sealed class MainForm : Form
         var content = new Panel { Dock = DockStyle.Fill, BackColor = Bg, Padding = new Padding(12) };
         pages["Editor"] = BuildEditorPage();
         pages["Pairing"] = BuildPairingPage();
+        pages["Internet"] = BuildInternetPage();
         pages["Devices"] = BuildDevicesPage();
         pages["Activity"] = BuildActivityPage();
         pages["Settings"] = BuildSettingsPage();
@@ -151,7 +152,40 @@ public sealed class MainForm : Form
         p.Controls.Add(Btn("Open button editor", 490, 300, 190, Blue, (_, _) => ShowPage("Editor")));
         fwLabel.Location = new Point(310, 348); fwLabel.AutoSize = true; p.Controls.Add(fwLabel);
         p.Controls.Add(Btn("Fix firewall", 310, 374, 170, Panel2, (_, _) => FixFirewall(true)));
-        p.Controls.Add(H("The code is single-use and expires after 10 minutes. Phones and PC must be on the same Wi-Fi,\nor connected with a USB cable (enable USB debugging; see Settings).", 0, 420, 9.5f, Muted));
+        p.Controls.Add(H("The code is single-use and expires after 10 minutes. Phones connect over the same Wi-Fi, USB cable,\nor from any network via the Internet tab (tunnel / Tailscale / your own address).", 0, 420, 9.5f, Muted));
+        return p;
+    }
+
+    readonly Label tunnelLabel = new();
+
+    Control BuildInternetPage()
+    {
+        var p = new Panel();
+        p.Controls.Add(H("Use your deck from any network", 0, 0));
+        p.Controls.Add(H("By default the phone only works on the same Wi-Fi. Pick one option below, then scan the QR code on the Pairing tab again\n(or just reconnect: already-paired phones receive the new address automatically the next time they connect at home).", 0, 36, 10f, Muted));
+
+        p.Controls.Add(H("Option 1 - Free internet tunnel (easiest, no router setup)", 0, 100, 11.5f));
+        var chk = new CheckBox { Text = "Turn on internet access (Cloudflare tunnel, needs cloudflared)", Location = new Point(0, 134), AutoSize = true, Checked = store.Data.InternetTunnel, ForeColor = Fg };
+        chk.CheckedChanged += (_, _) => { store.Data.InternetTunnel = chk.Checked; store.Save(); server.ApplyRemoteSettings(); };
+        p.Controls.Add(chk);
+        tunnelLabel.Location = new Point(0, 164); tunnelLabel.AutoSize = true; tunnelLabel.ForeColor = Muted;
+        p.Controls.Add(tunnelLabel);
+        p.Controls.Add(H("The tunnel address changes each time the host restarts; the phone picks up the new one when it can reach the PC,\nso for a never-changing address use Option 2 or 3. Traffic is encrypted (HTTPS) and still needs the pairing token.", 0, 196, 9.5f, Muted));
+
+        p.Controls.Add(H("Option 2 - Tailscale (private, free, works from anywhere)", 0, 256, 11.5f));
+        p.Controls.Add(H("Install Tailscale on this PC and on the phone and sign in to the same account. The Tailscale address (100.x.x.x) is added\nto the QR code automatically. Nothing else to configure.", 0, 290, 9.5f, Muted));
+
+        p.Controls.Add(H("Option 3 - Your own address (port forwarding / DDNS / your own tunnel)", 0, 350, 11.5f));
+        p.Controls.Add(H("Address phones should also try. Examples:  myhome.duckdns.org   |   203.0.113.5:47800   |   https://deck.example.com", 0, 384, 9.5f, Muted));
+        var tb = new TextBox { Location = new Point(0, 412), Width = 480, Text = store.Data.RemoteAddress, BackColor = Panel, ForeColor = Fg, BorderStyle = BorderStyle.FixedSingle };
+        p.Controls.Add(tb);
+        p.Controls.Add(Btn("Save address", 496, 408, 150, Purple, (_, _) =>
+        {
+            store.Data.RemoteAddress = tb.Text.Trim();
+            store.Save();
+            server.ApplyRemoteSettings();
+        }));
+        p.Controls.Add(H("Security: phones still need the single-use pairing code and a secret token. The button editor stays PC-only.\nFor port forwarding, forward TCP port " + store.Data.Port + " to this PC and keep the host updated.", 0, 460, 9.5f, Muted));
         return p;
     }
 
@@ -268,6 +302,7 @@ public sealed class MainForm : Form
         int n = server.ConnectedCount;
         statusLabel.Text = "● Running on port " + server.Port;
         statusLabel.ForeColor = Green;
+        tunnelLabel.Text = "Status: " + server.Tunnel.Status + (server.Tunnel.Url != null ? "\nAddress: " + server.Tunnel.Url : "");
         connectedLabel.Text = n == 0 ? "No phone connected" : $"{n} phone{(n == 1 ? "" : "s")} connected";
 
         var payload = server.PairingPayload();
@@ -283,7 +318,7 @@ public sealed class MainForm : Form
                 qrBox.Image = Image.FromStream(new MemoryStream(png));
             }
             catch { }
-            var addrs = HostServer.LocalAddresses();
+            var addrs = server.AllAddresses();
             addrLabel.Text = $"PC name:  {server.PcName}\nPort:  {server.Port}\n\nAddresses:\n  " +
                 (addrs.Count == 0 ? "(no network)" : string.Join("\n  ", addrs)) +
                 "\n\nUSB: 127.0.0.1 (via adb reverse)" +

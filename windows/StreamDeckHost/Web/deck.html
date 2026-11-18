@@ -251,7 +251,7 @@ function setLayout(l, cache) {
 function onMsg(m) {
   if (m.id && pending[m.id]) { const f = pending[m.id]; delete pending[m.id]; f(m); return; }
   switch (m.t) {
-    case 'auth_ok': fails = 0; setConn('on'); send({ t: 'layout_get', id: 0 }); break;
+    case 'auth_ok': fails = 0; setConn('on'); if (m.hosts) native('hosts:' + JSON.stringify(m.hosts)); send({ t: 'layout_get', id: 0 }); break;
     case 'auth_fail': native('unpaired'); break;
     case 'status': status = m; refreshActive(); refreshWidgets(); refreshSliders(); break;
     case 'layout': setLayout(m.layout); break;
@@ -259,7 +259,7 @@ function onMsg(m) {
 }
 function connect() {
   clearTimeout(retry); setConn('mid');
-  try { ws = new WebSocket(`ws://${location.host}/ws`); } catch (e) { return later(); }
+  try { ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`); } catch (e) { return later(); }
   ws.onopen = () => ws.send(JSON.stringify({ t: 'auth', deviceId: DEV, token: TOK }));
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (x) {} };
   ws.onclose = () => { setConn('off'); later(); };

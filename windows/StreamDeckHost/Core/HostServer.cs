@@ -50,6 +50,7 @@ public sealed class HostServer : IDisposable
     public int ConnectedCount => clients.Values.Count(c => c.Device != null);
     public IReadOnlyList<string> ConnectedDeviceIds => clients.Values.Where(c => c.Device != null).Select(c => c.Device!.Id).ToList();
     public string? DevPairingFile { get; set; }
+    public Tunnel Tunnel { get; }
 
     public HostServer(SettingsStore store, LayoutStore layout)
     {
@@ -57,6 +58,48 @@ public sealed class HostServer : IDisposable
         this.layout = layout;
         exec = new ActionExecutor(store);
         layout.Changed += () => _ = BroadcastLayout();
+        Tunnel = new Tunnel(store.Data.Port);
+        Tunnel.Changed += () => { WriteDevPairing(); Changed?.Invoke(); };
+    }
+
+    /// <summary>Applies the "internet access" settings (start/stop the tunnel). Call after changing them.</summary>
+    public void ApplyRemoteSettings()
+    {
+        if (store.Data.InternetTunnel) Tunnel.Start(); else Tunnel.Stop();
+        WriteDevPairing();
+        Changed?.Invoke();
+    }
+
+    /// <summary>Addresses a phone can try, best-first: home LAN, Tailscale, then the public address / tunnel.</summary>
+    public List<string> AllAddresses()
+    {
+        var list = LocalAddresses();
+        list.AddRange(TailscaleAddresses());
+        var remote = store.Data.RemoteAddress.Trim();
+        if (remote.Length > 0) list.Add(remote);
+        if (Tunnel.Url != null) list.Add(Tunnel.Url);
+        return list.Distinct().ToList();
+    }
+
+    /// <summary>Tailscale uses 100.64.0.0/10. Included automatically so phones on the same tailnet work from any network.</summary>
+    public static List<string> TailscaleAddresses()
+    {
+        var result = new List<string>();
+        try
+        {
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+                {
+                    if (ua.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                    var b = ua.Address.GetAddressBytes();
+                    if (b[0] == 100 && b[1] >= 64 && b[1] <= 127) result.Add(ua.Address.ToString());
+                }
+            }
+        }
+        catch { }
+        return result;
     }
 
     static string NewSecret() => Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
@@ -84,7 +127,7 @@ public sealed class HostServer : IDisposable
         v = 1,
         n = PcName,
         p = Port,
-        h = LocalAddresses(),
+        h = AllAddresses(),
         s = CurrentPairingSecret(),
     });
 
@@ -133,6 +176,7 @@ public sealed class HostServer : IDisposable
         L($"Listening on port {Port}");
 
         StartDiscovery();
+        if (store.Data.InternetTunnel) Tunnel.Start();
         _ = Task.Run(StatusLoop);
         WriteDevPairing();
     }
@@ -140,6 +184,7 @@ public sealed class HostServer : IDisposable
     public void Dispose()
     {
         cts.Cancel();
+        Tunnel.Dispose();
         try { udp?.Close(); } catch { }
         try { app?.StopAsync(TimeSpan.FromSeconds(1)).Wait(2000); } catch { }
     }
@@ -185,6 +230,10 @@ public sealed class HostServer : IDisposable
     {
         if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
         var ip = ctx.Connection.RemoteIpAddress?.MapToIPv4().ToString() ?? "?";
+        // Behind the tunnel every connection comes from loopback; use the real client address for rate limiting.
+        if (ctx.Connection.RemoteIpAddress is { } ra && IPAddress.IsLoopback(ra) &&
+            ctx.Request.Headers["CF-Connecting-IP"].ToString() is { Length: > 0 and < 64 } real)
+            ip = real;
         if (IsLocked(ip)) { ctx.Response.StatusCode = 429; return; }
 
         using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
@@ -396,7 +445,9 @@ public sealed class HostServer : IDisposable
         dev.LastSeen = DateTime.Now;
         c.Device = dev;
         L($"Connected: {dev.Name} ({c.Ip})");
-        await Send(c, new JsonObject { ["t"] = "auth_ok", ["host"] = PcName });
+        var hostsArr = new JsonArray();
+        foreach (var a in AllAddresses()) hostsArr.Add(a);
+        await Send(c, new JsonObject { ["t"] = "auth_ok", ["host"] = PcName, ["hosts"] = hostsArr });
         await Send(c, await BuildStatus(true));
         Changed?.Invoke();
     }

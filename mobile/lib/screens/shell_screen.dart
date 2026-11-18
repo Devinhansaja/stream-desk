@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -76,7 +78,7 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
     }
     pc.lastHost = host;
     app.save();
-    final url = Uri.parse('http://$host:${pc.port}/deck#d=${pc.deviceId}&t=${pc.token}');
+    final url = Uri.parse('${Endpoint.parse(host, pc.port).httpBase}/deck#d=${pc.deviceId}&t=${pc.token}');
     final c = web ??
         (WebViewController()
           ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -94,6 +96,18 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
   }
 
   void _onJs(JavaScriptMessage m) {
+    if (m.message.startsWith('hosts:')) {
+      // The PC tells us its current addresses (LAN, Tailscale, tunnel...) so we can reach it from other networks.
+      try {
+        final list = (jsonDecode(m.message.substring(6)) as List).cast<String>();
+        final pc = app.activePc;
+        if (pc != null && list.isNotEmpty && list.join('|') != pc.hosts.join('|')) {
+          pc.hosts = list;
+          app.save();
+        }
+      } catch (_) {}
+      return;
+    }
     switch (m.message) {
       case 'h':
         if (app.haptics) HapticFeedback.lightImpact();

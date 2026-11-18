@@ -23,6 +23,10 @@ public sealed class AppSettings
     /// <summary>Download and install new versions from GitHub Releases.</summary>
     public bool AutoUpdate { get; set; } = true;
     public bool FirewallAsked { get; set; }
+    /// <summary>Public address phones use away from home: a Tailscale IP, DDNS name, or https URL (optionally with :port).</summary>
+    public string RemoteAddress { get; set; } = "";
+    /// <summary>Start a free Cloudflare quick tunnel (needs cloudflared) so phones can connect from any network.</summary>
+    public bool InternetTunnel { get; set; }
     public List<DeviceRecord> Devices { get; set; } = new();
 }
 

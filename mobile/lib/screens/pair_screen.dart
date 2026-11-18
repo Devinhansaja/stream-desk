@@ -91,9 +91,9 @@ class _PairScreenState extends State<PairScreen> {
           ] else
             Expanded(
               child: ListView(children: [
-                const Text('Use this if the camera is unavailable. Over USB, use 127.0.0.1.', style: TextStyle(color: Neon.muted)),
+                const Text('Use this if the camera is unavailable. Over USB, use 127.0.0.1. From another network, use the PC\'s Tailscale IP, domain, or https:// tunnel address (shown on the PC).', style: TextStyle(color: Neon.muted)),
                 const SizedBox(height: 14),
-                TextField(controller: _ip, decoration: const InputDecoration(labelText: 'PC IP address', hintText: '192.168.1.20')),
+                TextField(controller: _ip, decoration: const InputDecoration(labelText: 'PC address', hintText: '192.168.1.20  or  https://xxxx.trycloudflare.com')),
                 const SizedBox(height: 10),
                 TextField(controller: _port, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Port')),
                 const SizedBox(height: 10),

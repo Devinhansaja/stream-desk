@@ -35,17 +35,52 @@ class DiscoveredPc {
   const DiscoveredPc(this.ip, this.name, this.port);
 }
 
+/// An address for the PC: a LAN/Tailscale IP, a DNS name, or a full URL such as https://x.trycloudflare.com.
+/// Plain hosts use [defaultPort] over http; "https://..." uses TLS (wss) on port 443 unless a port is given.
+class Endpoint {
+  final bool secure;
+  final String host;
+  final int port;
+  const Endpoint(this.secure, this.host, this.port);
+
+  static Endpoint parse(String raw, int defaultPort) {
+    var s = raw.trim();
+    var secure = false;
+    var hadScheme = false;
+    final m = RegExp(r'^(https?|wss?)://', caseSensitive: false).firstMatch(s);
+    if (m != null) {
+      hadScheme = true;
+      secure = m.group(1)!.toLowerCase().endsWith('s');
+      s = s.substring(m.end);
+    }
+    s = s.split('/').first;
+    var host = s;
+    int? port;
+    final idx = s.lastIndexOf(':');
+    if (idx > 0 && !s.endsWith(']') && s.indexOf(':') == idx) {
+      host = s.substring(0, idx);
+      port = int.tryParse(s.substring(idx + 1));
+    }
+    return Endpoint(secure, host, port ?? (hadScheme ? (secure ? 443 : 80) : defaultPort));
+  }
+
+  String get _authority => (secure && port == 443) || (!secure && port == 80) ? host : '$host:$port';
+  String get httpBase => '${secure ? 'https' : 'http'}://$_authority';
+  String get wsBase => '${secure ? 'wss' : 'ws'}://$_authority';
+}
+
 /// Finding and pairing with the PC. The deck itself runs inside a WebView served by the PC.
 class HostLink {
   static const discoveryPort = 47801;
 
-  /// True when a StreamDeck Host answers on [host]:[port].
+  /// True when a StreamDeck Host answers on [host]:[port] ([host] may also be a full URL).
   static Future<bool> probe(String host, int port) async {
-    final c = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+    final ep = Endpoint.parse(host, port);
+    final c = HttpClient()..connectionTimeout = Duration(seconds: ep.secure ? 6 : 2);
     try {
-      final req = await c.getUrl(Uri.parse('http://$host:$port/')).timeout(const Duration(seconds: 3));
-      final resp = await req.close().timeout(const Duration(seconds: 3));
-      final body = await resp.transform(utf8.decoder).join().timeout(const Duration(seconds: 3));
+      final req = await c.getUrl(Uri.parse('${ep.httpBase}/')).timeout(const Duration(seconds: 7));
+      final resp = await req.close().timeout(const Duration(seconds: 7));
+      final body = await resp.transform(utf8.decoder).join().timeout(const Duration(seconds: 7));
       return body.contains('StreamDeck Host');
     } catch (_) {
       return false;
@@ -127,13 +162,13 @@ class HostLink {
     final host = await firstReachable(hosts, qr.port);
     if (host == null) {
       return 'Could not reach your PC at ${qr.hosts.isEmpty ? "(no address in QR)" : qr.hosts.join(", ")}.\n\n'
-          '• Phone and PC must be on the same Wi-Fi (not a guest network).\n'
-          '• In StreamDeck Host on the PC press "Fix firewall".\n'
+          '• Away from home? On the PC open the Internet tab and turn on internet access (or use Tailscale).\n'
+          '• At home: same Wi-Fi (not a guest network) and press "Fix firewall" on the PC.\n'
           '• Or plug in USB with USB debugging on and use the manual option with 127.0.0.1.';
     }
     IOWebSocketChannel? ch;
     try {
-      ch = IOWebSocketChannel.connect(Uri.parse('ws://$host:${qr.port}/ws'), connectTimeout: const Duration(seconds: 4));
+      ch = IOWebSocketChannel.connect(Uri.parse('${Endpoint.parse(host, qr.port).wsBase}/ws'), connectTimeout: const Duration(seconds: 8));
       final c = ch;
       await c.ready.timeout(const Duration(seconds: 5));
       c.sink.add(jsonEncode({'t': 'pair', 'secret': qr.secret, 'deviceId': app.deviceId, 'deviceName': app.deviceName}));
