@@ -1,0 +1,125 @@
+﻿// End-to-end protocol test against a running StreamDeck Host (stand-in for the phone).
+// Usage: node test-client.mjs <pairing-file> [port]
+// The pairing file is produced by:  StreamDeckHost.exe --tray --dev-pairing-file <file> --port <port>
+import { readFileSync } from 'node:fs';
+
+const pairing = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const port = Number(process.argv[3] ?? pairing.p);
+const url = `ws://127.0.0.1:${port}/ws`;
+const deviceId = 'test-device-' + Math.random().toString(16).slice(2);
+
+let pass = 0, fail = 0;
+const check = (name, ok, extra = '') => { (ok ? pass++ : fail++); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name} ${extra}`); };
+
+function open() {
+  return new Promise((res, rej) => {
+    const ws = new WebSocket(url);
+    ws.queue = []; ws.waiters = [];
+    ws.onmessage = (e) => {
+      const m = JSON.parse(e.data);
+      const i = ws.waiters.findIndex(w => w.pred(m));
+      if (i >= 0) ws.waiters.splice(i, 1)[0].res(m); else ws.queue.push(m);
+    };
+    ws.onopen = () => res(ws);
+    ws.onerror = (e) => rej(new Error('ws error'));
+  });
+}
+function wait(ws, pred, ms = 8000) {
+  const i = ws.queue.findIndex(pred);
+  if (i >= 0) return Promise.resolve(ws.queue.splice(i, 1)[0]);
+  return new Promise((res, rej) => {
+    const w = { pred, res };
+    ws.waiters.push(w);
+    setTimeout(() => rej(new Error('timeout')), ms);
+  });
+}
+let nextId = 1;
+async function rpc(ws, msg, type, ms = 8000) {
+  const id = nextId++;
+  ws.send(JSON.stringify({ ...msg, id }));
+  return wait(ws, m => m.id === id && (!type || m.t === type), ms);
+}
+
+// 1. unauthenticated request must be refused
+let ws = await open();
+ws.send(JSON.stringify({ t: 'action', id: 1, action: { type: 'volume_up' } }));
+let m = await wait(ws, x => x.t === 'error');
+check('unauthenticated action refused', m.error === 'not_authenticated');
+ws.close();
+
+// 2. bad pairing secret refused
+ws = await open();
+ws.send(JSON.stringify({ t: 'pair', secret: 'deadbeef', deviceId, deviceName: 'Test' }));
+m = await wait(ws, x => x.t === 'pair_fail');
+check('bad pairing secret rejected', !!m);
+ws.close();
+
+// 3. real pairing
+ws = await open();
+ws.send(JSON.stringify({ t: 'pair', secret: pairing.s, deviceId, deviceName: 'Test Phone' }));
+m = await wait(ws, x => x.t === 'paired');
+check('pairing with QR secret', !!m.token);
+const token = m.token;
+const st = await wait(ws, x => x.t === 'status');
+check('status after pair', typeof st.volume === 'number', JSON.stringify(st));
+ws.close();
+
+// 4. secret is single-use
+ws = await open();
+ws.send(JSON.stringify({ t: 'pair', secret: pairing.s, deviceId: deviceId + 'x', deviceName: 'Replay' }));
+m = await wait(ws, x => x.t === 'pair_fail');
+check('pairing secret is single-use', !!m);
+ws.close();
+
+// 5. auth with token, wrong token refused
+ws = await open();
+ws.send(JSON.stringify({ t: 'auth', deviceId, token: 'wrong' }));
+m = await wait(ws, x => x.t === 'auth_fail');
+check('wrong token refused', !!m);
+ws.close();
+
+ws = await open();
+ws.send(JSON.stringify({ t: 'auth', deviceId, token }));
+m = await wait(ws, x => x.t === 'auth_ok');
+check('auth with stored token', !!m);
+await wait(ws, x => x.t === 'status');
+
+// 6. real actions
+const before = (await rpc(ws, { t: 'status' }, 'status')).volume;
+m = await rpc(ws, { t: 'action', action: { type: 'volume_set', value: 33 } }, 'result');
+check('volume_set executes', m.ok === true, m.error ?? '');
+let s2 = await rpc(ws, { t: 'status' }, 'status');
+check('volume really changed to 33', s2.volume === 33, `got ${s2.volume}`);
+m = await rpc(ws, { t: 'action', action: { type: 'volume_up', step: 10 } }, 'result');
+s2 = await rpc(ws, { t: 'status' }, 'status');
+check('volume_up +10 => 43', s2.volume === 43, `got ${s2.volume}`);
+m = await rpc(ws, { t: 'action', action: { type: 'mute', value: true } }, 'result');
+s2 = await rpc(ws, { t: 'status' }, 'status');
+check('mute applied', s2.muted === true);
+await rpc(ws, { t: 'action', action: { type: 'mute', value: false } }, 'result');
+await rpc(ws, { t: 'action', action: { type: 'volume_set', value: before } }, 'result');
+
+m = await rpc(ws, { t: 'action', action: { type: 'macro', steps: [{ type: 'volume_set', value: 20 }, { type: 'delay', ms: 100 }, { type: 'volume_set', value: before }] } }, 'result');
+check('macro runs', m.ok === true, m.error ?? '');
+
+m = await rpc(ws, { t: 'action', action: { type: 'shell', command: 'echo hi' } }, 'result');
+check('shell disabled by default', m.ok === false && /disabled/i.test(m.error));
+m = await rpc(ws, { t: 'action', action: { type: 'nonsense' } }, 'result');
+check('unknown action reported', m.ok === false);
+m = await rpc(ws, { t: 'action', action: { type: 'hotkey', keys: 'ctrl+bogus' } }, 'result');
+check('bad hotkey reported', m.ok === false, m.error);
+
+m = await rpc(ws, { t: 'action', action: { type: 'screenshot' } }, 'result');
+check('screenshot', m.ok === true, m.message ?? m.error);
+
+m = await rpc(ws, { t: 'apps', refresh: true }, 'apps', 60000);
+check('app list', m.apps.length > 0, `${m.apps.length} apps, ${m.apps.filter(a => a.icon).length} with icons`);
+console.log('   sample:', m.apps.slice(0, 5).map(a => `${a.name} [${a.kind}]`).join(', '));
+
+m = await rpc(ws, { t: 'wallpapers' }, 'wallpapers');
+check('wallpaper list', Array.isArray(m.items));
+
+ws.close();
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);
+

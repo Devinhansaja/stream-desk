@@ -1,0 +1,14 @@
+.toolchain/
+dist/
+windows/publish/
+**/bin/
+**/obj/
+mobile/build/
+mobile/.dart_tool/
+mobile/.gradle/
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/.flutter-plugins*
+mobile/pubspec.lock
+.idea/
+*.iml
