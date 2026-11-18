@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../connection.dart';
 import '../store.dart';
+import '../updater.dart';
 import '../widgets.dart';
 import 'pair_screen.dart';
 
@@ -208,13 +210,44 @@ class _ShellScreenState extends State<ShellScreen> with WidgetsBindingObserver {
                 ),
               ]),
               const SizedBox(height: 10),
-              const Center(child: Text('StreamDeck Mobile 1.1.0', style: TextStyle(color: Neon.muted, fontSize: 12))),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.system_update),
+                  label: const Text('Check for app update'),
+                  onPressed: () => _checkUpdate(ctx),
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Center(child: Text('StreamDeck Mobile $kAppVersion  ·  deck look and buttons update from the PC automatically', textAlign: TextAlign.center, style: TextStyle(color: Neon.muted, fontSize: 12))),
             ]),
           ),
         );
       }),
     );
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  Future<void> _checkUpdate(BuildContext sheetCtx) async {
+    final nav = Navigator.of(sheetCtx);
+    showDialog(context: sheetCtx, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
+    final r = await checkAppUpdate();
+    nav.pop(); // spinner
+    if (!sheetCtx.mounted) return;
+    final u = r.update;
+    await showDialog(
+      context: sheetCtx,
+      builder: (ctx) => AlertDialog(
+        title: Text(r.error != null ? 'Could not check' : (u == null ? 'You are up to date' : 'Update available')),
+        content: Text(r.error ?? (u == null
+            ? 'StreamDeck Mobile $kAppVersion is the latest version.'
+            : 'Version ${u.version} is available (you have $kAppVersion).\n\nTap Download, then open the downloaded file to install it over this app. Your pairing and settings are kept.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+          if (u != null) FilledButton(onPressed: () { launchUrl(Uri.parse(u.apkUrl), mode: LaunchMode.externalApplication); Navigator.pop(ctx); }, child: const Text('Download')),
+        ],
+      ),
+    );
   }
 
   Widget _center(List<Widget> children) => Center(

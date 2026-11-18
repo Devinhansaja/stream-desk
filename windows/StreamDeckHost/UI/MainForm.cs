@@ -466,6 +466,18 @@ public sealed class MainForm : Form
     // ------------------------------------------------------------ icon
     static Icon MakeIcon()
     {
+        try
+        {
+            var asm = System.Reflection.Assembly.GetExecutingAssembly();
+            var name = asm.GetManifestResourceNames().First(n => n.EndsWith("app.ico", StringComparison.OrdinalIgnoreCase));
+            using var s = asm.GetManifestResourceStream(name)!;
+            return new Icon(s);
+        }
+        catch { return MakeFallbackIcon(); }
+    }
+
+    static Icon MakeFallbackIcon()
+    {
         using var bmp = new Bitmap(64, 64);
         using (var g = Graphics.FromImage(bmp))
         {

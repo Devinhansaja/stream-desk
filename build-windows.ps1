@@ -23,7 +23,7 @@ if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
 if (Test-Path $iscc) {
     & $iscc "$root\installer\StreamDeckHost.iss"
     if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
-    Write-Host "Installer: dist\StreamDeckHost-Setup-1.2.1.exe"
+    Write-Host "Installer: dist\StreamDeckHost-Setup-1.2.2.exe"
 } else {
     Write-Warning "Inno Setup not found - installer skipped. Install it (winget install JRSoftware.InnoSetup) and re-run."
 }

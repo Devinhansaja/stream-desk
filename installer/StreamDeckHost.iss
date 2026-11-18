@@ -1,7 +1,7 @@
 ; Inno Setup script for the StreamDeck Host Windows installer.
 ; Build:  iscc installer\StreamDeckHost.iss      (after running build-windows.ps1, which fills windows\publish)
 #define AppName "StreamDeck Host"
-#define AppVersion "1.2.1"
+#define AppVersion "1.2.2"
 #define AppExe "StreamDeckHost.exe"
 
 [Setup]
@@ -21,6 +21,7 @@ PrivilegesRequired=lowest
 MinVersion=10.0
 UninstallDisplayIcon={app}\{#AppExe}
 WizardStyle=modern
+SetupIconFile=..\windows\StreamDeckHost\app.ico
 CloseApplications=yes
 
 [Tasks]
