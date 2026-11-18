@@ -425,6 +425,50 @@ public sealed class DiscordRpc : IDisposable
         }
     }
 
+    // ------------------------------------------------------------------ browsing servers and joining voice channels
+    public sealed record GuildInfo(string Id, string Name, string Icon);
+    public sealed record ChannelInfo(string Id, string Name);
+
+    List<GuildInfo>? guildCache; DateTime guildCacheAt;
+
+    public async Task<List<GuildInfo>> GetGuildsAsync()
+    {
+        if (guildCache != null && DateTime.UtcNow - guildCacheAt < TimeSpan.FromSeconds(60)) return guildCache;
+        var r = await Cmd("GET_GUILDS");
+        var list = new List<GuildInfo>();
+        if (r["data"]?["guilds"] is JsonArray arr)
+            foreach (var g in arr)
+            {
+                var id = g?["id"]?.GetValue<string>(); if (id == null) continue;
+                var icon = g!["icon_url"]?.GetValue<string>() ?? "";
+                if (icon.Length == 0 && g["icon"]?.GetValue<string>() is { Length: > 0 } hash) icon = $"https://cdn.discordapp.com/icons/{id}/{hash}.png?size=128";
+                list.Add(new GuildInfo(id, g["name"]?.GetValue<string>() ?? id, icon));
+            }
+        guildCache = list; guildCacheAt = DateTime.UtcNow;
+        return list;
+    }
+
+    /// <summary>Voice channels (type 2) of a server, in Discord's order.</summary>
+    public async Task<List<ChannelInfo>> GetVoiceChannelsAsync(string guildId)
+    {
+        var r = await Cmd("GET_CHANNELS", new JsonObject { ["guild_id"] = guildId });
+        var list = new List<ChannelInfo>();
+        if (r["data"]?["channels"] is JsonArray arr)
+            foreach (var c in arr)
+            {
+                int type = c?["type"] is JsonValue v && v.TryGetValue<int>(out var t) ? t : -1;
+                var id = c?["id"]?.GetValue<string>();
+                if (type == 2 && id != null) list.Add(new ChannelInfo(id, c!["name"]?.GetValue<string>() ?? id));
+            }
+        return list;
+    }
+
+    public async Task JoinAsync(string channelId)
+    {
+        if (string.IsNullOrWhiteSpace(channelId)) throw new ArgumentException("Missing channel");
+        await Cmd("SELECT_VOICE_CHANNEL", new JsonObject { ["channel_id"] = channelId, ["force"] = true });
+    }
+
     // ------------------------------------------------------------------ controls (used by phone keys)
     public async Task ToggleMuteAsync()
     {

@@ -454,6 +454,41 @@ public sealed class HostServer : IDisposable
                 break;
             }
 
+            case "discord_guilds":
+            {
+                _ = Task.Run(async () =>
+                {
+                    var res = new JsonObject { ["t"] = "discord_guilds", ["id"] = id };
+                    try
+                    {
+                        var arr = new JsonArray();
+                        foreach (var g in await Discord.GetGuildsAsync()) arr.Add(new JsonObject { ["id"] = g.Id, ["name"] = g.Name, ["icon"] = g.Icon });
+                        res["guilds"] = arr;
+                    }
+                    catch (Exception e) { res["error"] = e.Message; }
+                    await Send(c, res);
+                });
+                break;
+            }
+
+            case "discord_channels":
+            {
+                var guild = S(m, "guild");
+                _ = Task.Run(async () =>
+                {
+                    var res = new JsonObject { ["t"] = "discord_channels", ["id"] = id, ["guild"] = guild };
+                    try
+                    {
+                        var arr = new JsonArray();
+                        foreach (var ch in await Discord.GetVoiceChannelsAsync(guild)) arr.Add(new JsonObject { ["id"] = ch.Id, ["name"] = ch.Name });
+                        res["channels"] = arr;
+                    }
+                    catch (Exception e) { res["error"] = e.Message; }
+                    await Send(c, res);
+                });
+                break;
+            }
+
             case "layout_get":
                 await Send(c, new JsonObject { ["t"] = "layout", ["id"] = id, ["layout"] = layout.Snapshot() });
                 break;

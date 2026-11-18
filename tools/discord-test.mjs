@@ -29,6 +29,8 @@ const server = net.createServer(s => {
       const reply = data => s.write(frame(1, { cmd: msg.cmd, data, evt: null, nonce: msg.nonce }));
       switch (msg.cmd) {
         case 'AUTHENTICATE': reply({ user: { id: '111111111111111111', username: 'me', global_name: 'Me' }, scopes: [] }); break;
+        case 'GET_GUILDS': reply({ guilds: [{ id: 'g1', name: 'Gaming Squad', icon_url: '' }, { id: 'g2', name: 'Study Group' }] }); break;
+        case 'GET_CHANNELS': reply({ channels: [{ id: 't1', name: 'general', type: 0 }, { id: 'v1', name: 'Lobby', type: 2 }, { id: 'v2', name: 'Games', type: 2 }] }); break;
         case 'GET_VOICE_SETTINGS': reply({ ...voice }); break;
         case 'GET_SELECTED_VOICE_CHANNEL': reply(channel ? { id: channel, name: 'General', voice_states: users } : null); break;
         case 'SET_VOICE_SETTINGS': Object.assign(voice, msg.args); reply({ ...voice }); dispatch('VOICE_SETTINGS_UPDATE', { ...voice }); break;
@@ -87,6 +89,17 @@ await act('discord_deafen_toggle');
 r = await act('discord_disconnect');
 check('leave key disconnects (SELECT_VOICE_CHANNEL null)', r?.ok === true && received.some(m => m.cmd === 'SELECT_VOICE_CHANNEL' && m.args.channel_id === null));
 check('call end clears the phone state', await until(() => last.inCall === false && last.users.length === 0));
+
+// browse servers and join a voice channel from the phone
+const ask = async msg => { const i = id++; const n = inbox.length; ws.send(JSON.stringify({ ...msg, id: i })); await until(() => inbox.slice(n).some(m => m.id === i), 8000); return inbox.slice(n).find(m => m.id === i); };
+let g = await ask({ t: 'discord_guilds' });
+check('phone can list my Discord servers', g?.guilds?.length === 2 && g.guilds[0].name === 'Gaming Squad', JSON.stringify(g?.guilds?.map(x => x.name)));
+let ch = await ask({ t: 'discord_channels', guild: 'g1' });
+check('server shows only its voice channels', JSON.stringify(ch?.channels?.map(x => x.name)) === '["Lobby","Games"]', JSON.stringify(ch?.channels?.map(x => x.name)));
+channel = null;
+{ const i = id++; const n = inbox.length; ws.send(JSON.stringify({ t: 'action', id: i, action: { type: 'discord_join', channel: 'v2' } })); await until(() => inbox.slice(n).some(m => m.id === i), 8000); var jr = inbox.slice(n).find(m => m.id === i); }
+check('tapping a channel joins it (SELECT_VOICE_CHANNEL v2)', jr?.ok === true && received.some(m => m.cmd === 'SELECT_VOICE_CHANNEL' && m.args.channel_id === 'v2'));
+check('phone is now in that call', await until(() => last.inCall === true));
 
 // Discord quits -> host reports it and keeps running
 sock.destroy();

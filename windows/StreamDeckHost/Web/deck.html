@@ -91,6 +91,18 @@
   .du .dn { margin-top:6px; font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .du .db { position:absolute; top:0; right:8px; font-size:15px; text-shadow:0 1px 3px #000; }
   .dbtns { display:flex; gap:10px; } .dbtns button { flex:1; font:inherit; font-weight:700; color:#fff; background:#2b2d31; border:2px solid #5865f2; border-radius:16px; padding:18px 6px; font-size:16px; }
   .dbtns button.on { background:#ed4245; border-color:#ed4245; } .dbtns button.leave { border-color:#ed4245; color:#ff7a7c; } .dbtns button i { display:none; }
+  .dh .dsv { margin-left:auto; font:inherit; font-size:13px; font-weight:600; color:#fff; background:#2b2d31; border:1px solid #5865f2; border-radius:12px; padding:6px 12px; }
+  .dview { flex:1; min-height:0; display:none; flex-direction:column; gap:12px; }
+  .dcw[data-v=call] .dcall, .dcw[data-v=servers] .dsrv, .dcw[data-v=channels] .dchn { display:flex; }
+  .dmsg { opacity:.75; font-size:14px; }
+  .dgrid { flex:1; min-height:0; overflow:auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(92px,1fr)); gap:14px; align-content:start; }
+  .gt { text-align:center; position:relative; } .gt img { width:100%; aspect-ratio:1; border-radius:28%; object-fit:cover; background:#202225; display:block; }
+  .gt.noimg::before { content:attr(data-l); display:grid; place-items:center; width:100%; aspect-ratio:1; border-radius:28%; background:#5865f2; font-size:34px; font-weight:700; }
+  .gt .gn { margin-top:6px; font-size:12.5px; font-weight:600; line-height:1.15; max-height:2.4em; overflow:hidden; }
+  .dback { align-self:flex-start; font-size:15px; font-weight:700; color:#8ea1ff; padding:6px 2px; }
+  .dlist { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:8px; }
+  .dc { background:#2b2d31; border:1px solid #ffffff22; border-radius:14px; padding:16px; font-size:16px; font-weight:600; }
+  .dc:active { background:#5865f2; }
   #empty { margin:auto; text-align:center; color:#aaa; padding:30px; }
 </style>
 </head>
@@ -222,10 +234,14 @@ function widgetPage(pg) {
     if (!pg.url) { const m = document.createElement('div'); m.className = 'wmsg'; m.textContent = 'Set a YouTube link for this page in the PC editor.'; el.append(m); }
   } else if (pg.kind === 'discord') {
     const w = document.createElement('div'); w.className = 'dcw';
-    w.innerHTML = '<div class="dh"><b></b><span></span></div><div class="dusers"></div><div class="dbtns"><button data-a="discord_mute_toggle"><i></i>Mute</button><button data-a="discord_deafen_toggle"><i></i>Deafen</button><button data-a="discord_disconnect" class="leave"><i></i>Leave</button></div>';
-    w.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { native('h'); if (!connected) { toast('Not connected to the PC'); return; } const id = nextId++; pending[id] = r => { if (!r.ok) toast(r.error || 'Failed'); }; send({ t: 'action', id, action: { type: b.dataset.a } }); }));
-    el.append(w); setTimeout(renderDiscord, 0);
-  } else if (pg.kind === 'screen') {
+    w.innerHTML = '<div class="dh"><b></b><span></span><button class="dsv"></button></div>'
+      + '<div class="dview dcall"><div class="dusers"></div><div class="dbtns"><button data-a="discord_mute_toggle"><i></i>Mute</button><button data-a="discord_deafen_toggle"><i></i>Deafen</button><button data-a="discord_disconnect" class="leave"><i></i>Leave</button></div></div>'
+      + '<div class="dview dsrv"><div class="dmsg"></div><div class="dgrid"></div></div>'
+      + '<div class="dview dchn"><div class="dback">‹ Servers</div><div class="dmsg"></div><div class="dlist"></div></div>';
+    w.querySelectorAll('.dbtns button').forEach(b => b.addEventListener('click', () => { native('h'); if (!connected) { toast('Not connected to the PC'); return; } const id = nextId++; pending[id] = r => { if (!r.ok) toast(r.error || 'Failed'); }; send({ t: 'action', id, action: { type: b.dataset.a } }); }));
+    w.querySelector('.dsv').addEventListener('click', () => { native('h'); dView = (dView || (discord.inCall ? 'call' : 'servers')) === 'call' ? 'servers' : 'call'; renderDiscord(); });
+    w.querySelector('.dback').addEventListener('click', () => { native('h'); dView = 'servers'; renderDiscord(); });
+    el.append(w); setTimeout(renderDiscord, 0);  } else if (pg.kind === 'screen') {
     const img = document.createElement('img'); img.className = 'scrw'; img.alt = ''; el.append(img);
     const m = document.createElement('div'); m.className = 'wmsg'; m.textContent = 'Connecting to PC screen…'; m.id = 'scrMsg'; el.append(m);
     bindScreenTouch(img);
@@ -238,11 +254,22 @@ function dAvatar(u) {
   let n = 0; try { n = Number((BigInt(u.id) >> 22n) % 6n); } catch (e) {}
   return `https://cdn.discordapp.com/embed/avatars/${n}.png`;
 }
+let dView = null, dGuild = null, dGuilds = null, dChannels = null;
+function dReq(msg, cb) { if (!connected) { toast('Not connected to the PC'); return false; } const id = nextId++; pending[id] = cb; send({ ...msg, id }); return true; }
+function dLoadGuilds() { dGuilds = { loading: true }; dReq({ t: 'discord_guilds' }, r => { dGuilds = r.error ? { error: r.error } : { list: r.guilds || [] }; renderDiscord(); }) || (dGuilds = null); }
+function dOpenGuild(g) { dGuild = g; dChannels = { loading: true }; dView = 'channels'; renderDiscord(); dReq({ t: 'discord_channels', guild: g.id }, r => { dChannels = r.error ? { error: r.error } : { list: r.channels || [] }; renderDiscord(); }); }
+function dJoin(ch) { native('h'); dReq({ t: 'action', action: { type: 'discord_join', channel: ch.id } }, r => { if (!r.ok) toast(r.error || 'Could not join'); }); dView = null; renderDiscord(); }
 function renderDiscord() {
   document.querySelectorAll('.dcw').forEach(w => {
-    const h = w.querySelector('.dh b'), s = w.querySelector('.dh span'), box = w.querySelector('.dusers');
+    const view = dView === 'channels' ? 'channels' : (dView || (discord.inCall ? 'call' : 'servers'));
+    w.dataset.v = view;
+    const h = w.querySelector('.dh b'), s = w.querySelector('.dh span'), sv = w.querySelector('.dsv'), box = w.querySelector('.dusers');
     if (discord.inCall) { h.textContent = '🔊 ' + (discord.channel || 'Voice'); s.textContent = discord.users.length + ' in call'; }
-    else { h.textContent = 'Discord'; s.textContent = discord.rpc === 'ok' ? 'Not in a call' : (discord.status || 'Not set up (PC: StreamDeck Host > Discord)'); }
+    else { h.textContent = 'Discord'; s.textContent = discord.rpc === 'ok' ? 'Not in a call' : (discord.status || 'Not connected (PC: StreamDeck Host > Discord)'); }
+    sv.style.display = discord.rpc === 'ok' ? '' : 'none';
+    sv.textContent = view === 'call' ? 'Servers' : (discord.inCall ? 'Back to call' : 'Servers');
+    sv.style.visibility = (view === 'servers' && !discord.inCall) ? 'hidden' : 'visible';
+    // --- call view
     const keep = new Set();
     discord.users.forEach(u => {
       keep.add(u.id);
@@ -257,9 +284,30 @@ function renderDiscord() {
     m.classList.toggle('on', !!discord.mute); m.lastChild.textContent = discord.mute ? 'Unmute' : 'Mute';
     d.classList.toggle('on', !!discord.deaf); d.lastChild.textContent = discord.deaf ? 'Undeafen' : 'Deafen';
     w.querySelector('.leave').style.opacity = discord.inCall ? 1 : .4;
+    // --- servers view
+    if (view === 'servers' || view === 'channels') {
+      if (discord.rpc === 'ok' && dGuilds == null) dLoadGuilds();
+      const key = JSON.stringify([view, discord.rpc, dGuilds, dGuild && dGuild.id, dChannels]);
+      if (w._k !== key) {
+        w._k = key;
+        const msg = w.querySelector('.dsrv .dmsg'), grid = w.querySelector('.dgrid');
+        msg.textContent = discord.rpc !== 'ok' ? (discord.status || 'Discord is not connected') : (!dGuilds || dGuilds.loading ? 'Loading your servers…' : (dGuilds.error ? 'Could not load servers: ' + dGuilds.error : (dGuilds.list.length ? 'Tap a server to see its voice channels' : 'No servers found')));
+        grid.innerHTML = '';
+        ((dGuilds && dGuilds.list) || []).forEach(g => {
+          const t = document.createElement('div'); t.className = 'gt'; t.dataset.l = (g.name || '?').trim().charAt(0).toUpperCase();
+          const im = document.createElement('img'); if (g.icon) { im.src = g.icon; im.onerror = () => { im.remove(); t.classList.add('noimg'); }; t.append(im); } else t.classList.add('noimg');
+          const nm = document.createElement('div'); nm.className = 'gn'; nm.textContent = g.name; t.append(nm);
+          t.addEventListener('click', () => { native('h'); dOpenGuild(g); });
+          grid.append(t);
+        });
+        const cm = w.querySelector('.dchn .dmsg'), list = w.querySelector('.dlist');
+        cm.textContent = dGuild ? dGuild.name + (!dChannels || dChannels.loading ? ' - loading…' : (dChannels.error ? ' - ' + dChannels.error : (dChannels.list.length ? ' - tap a voice channel to join' : ' - no voice channels'))) : '';
+        list.innerHTML = '';
+        ((dChannels && dChannels.list) || []).forEach(c => { const r = document.createElement('div'); r.className = 'dc'; r.textContent = '🔊  ' + c.name; r.addEventListener('click', () => dJoin(c)); list.append(r); });
+      }
+    }
   });
-}
-/** Jump to the Discord page when a call starts; go back when it ends. Swiping away during a call is respected. */
+}/** Jump to the Discord page when a call starts; go back when it ends. Swiping away during a call is respected. */
 function autoDiscordPage() {
   if (folderId) { if (discord.inCall) { /* keep the folder; the user is busy */ } return; }
   const idx = shownPages.findIndex(p => p.kind === 'discord' && p.autoOpen !== false);
@@ -448,7 +496,7 @@ function onMsg(m) {
     case 'auth_ok': fails = 0; setConn('on'); resetSubs(); if (m.hosts) native('hosts:' + JSON.stringify(m.hosts)); send({ t: 'layout_get', id: 0 }); break;
     case 'auth_fail': native('unpaired'); break;
     case 'status': status = m; refreshActive(); refreshWidgets(); refreshSliders(); break;
-    case 'discord': discord = m; renderDiscord(); refreshActive(); autoDiscordPage(); break;
+    case 'discord': if (m.inCall !== discord.inCall) dView = null; if (m.rpc !== 'ok') dGuilds = null; discord = m; renderDiscord(); refreshActive(); autoDiscordPage(); break;
     case 'layout': setLayout(m.layout); break;
   }
 }

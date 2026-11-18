@@ -24,6 +24,8 @@ const server = net.createServer(s => { sock = s; let buf = Buffer.alloc(0);
       received.push(msg); const reply = data => s.write(frame(1, { cmd: msg.cmd, data, evt: null, nonce: msg.nonce }));
       switch (msg.cmd) {
         case 'AUTHENTICATE': reply({ user: { id: '111111111111111111', username: 'me', global_name: 'Me' } }); break;
+        case 'GET_GUILDS': reply({ guilds: [{ id: 'g1', name: 'Gaming Squad', icon_url: '' }, { id: 'g2', name: 'Study Group' }] }); break;
+        case 'GET_CHANNELS': reply({ channels: [{ id: 't1', name: 'general', type: 0 }, { id: 'v1', name: 'Lobby', type: 2 }, { id: 'v2', name: 'Games', type: 2 }] }); break;
         case 'GET_VOICE_SETTINGS': reply({ ...voice }); break;
         case 'GET_SELECTED_VOICE_CHANNEL': reply(channel ? { id: channel, name: 'General', voice_states: users } : null); break;
         case 'SET_VOICE_SETTINGS': Object.assign(voice, msg.args); reply({ ...voice }); dispatch('VOICE_SETTINGS_UPDATE', { ...voice }); break;
@@ -82,6 +84,17 @@ check('swiping away during a call is not overridden', (await ev('curPage')) === 
 channel = null; dispatch('VOICE_CHANNEL_SELECT', { channel_id: null }); await sleep(600);
 channel = 'chan1'; dispatch('VOICE_CHANNEL_SELECT', { channel_id: 'chan1' });
 check('the next call opens the page again', await until(`curPage===${dIdx}`));
+// browse servers -> channels -> join (when not in a call)
+channel = null; dispatch('VOICE_CHANNEL_SELECT', { channel_id: null });
+check('not in a call: the server list is shown', await until("!discord.inCall && document.querySelector('.dcw').dataset.v==='servers' && document.querySelectorAll('.dcw .gt').length===2"));
+await ev(`document.getElementById('pages').scrollLeft = ${dIdx} * document.getElementById('pages').clientWidth; 0`); await sleep(500);
+{ const s = await call('Page.captureScreenshot', { format: 'png' }); writeFileSync(shotFile.replace('.png', '_servers.png'), Buffer.from(s.result.data, 'base64')); }
+check('server tiles carry names', (await ev("[...document.querySelectorAll('.dcw .gn')].map(x=>x.textContent).join('|')")) === 'Gaming Squad|Study Group');
+await ev("document.querySelector('.dcw .gt').click(); 0");
+check('tapping a server lists its voice channels only', await until("document.querySelector('.dcw').dataset.v==='channels' && document.querySelectorAll('.dcw .dc').length===2") && (await ev("[...document.querySelectorAll('.dcw .dc')].map(x=>x.textContent.trim()).join('|')")).includes('Lobby'));
+{ const s = await call('Page.captureScreenshot', { format: 'png' }); writeFileSync(shotFile.replace('.png', '_channels.png'), Buffer.from(s.result.data, 'base64')); }
+await ev("document.querySelector('.dcw .dc').click(); 0");
+check('tapping a channel joins the call and shows it', await until("discord.inCall && document.querySelector('.dcw').dataset.v==='call'") && received.some(m => m.cmd === 'SELECT_VOICE_CHANNEL' && m.args.channel_id === 'v1'));
 check('no script errors on the phone page', errors.length === 0, errors.join(' | '));
 
 console.log(`\n${pass} passed, ${fail} failed`);

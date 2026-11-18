@@ -38,6 +38,7 @@ public sealed class ActionExecutor
         {
             case "discord_mute_toggle": await (Discord ?? throw new InvalidOperationException("Discord is not set up")).ToggleMuteAsync(); break;
             case "discord_deafen_toggle": await (Discord ?? throw new InvalidOperationException("Discord is not set up")).ToggleDeafenAsync(); break;
+            case "discord_join": await (Discord ?? throw new InvalidOperationException("Discord is not set up")).JoinAsync(Str(action, "channel")); break;
             case "discord_disconnect": await (Discord ?? throw new InvalidOperationException("Discord is not set up")).DisconnectAsync(); break;
             case "none": case "folder": case "back": break; // live tiles / client-side navigation
 
