@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Reflection;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
@@ -13,6 +14,18 @@ namespace StreamDeckHost.Core;
 /// </summary>
 public static class WebEndpoints
 {
+    // The editor may fetch icons from these hosts only (through the host, so the browser can read the pixels).
+    static readonly HttpClient imgHttp = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(12) };
+
+    static bool ImageHostAllowed(Uri u)
+    {
+        if (u.Scheme != Uri.UriSchemeHttps) return false;
+        var h = u.Host.ToLowerInvariant();
+        if (h == "www.google.com") return u.AbsolutePath.StartsWith("/s2/favicons");
+        return h is "api.iconify.design" or "cdn.simpleicons.org" or "cdn.cloudflare.steamstatic.com"
+            or "shared.cloudflare.steamstatic.com" or "steamcdn-a.akamaihd.net" || h.EndsWith(".gstatic.com");
+    }
+
     static string? Resource(string name)
     {
         var asm = Assembly.GetExecutingAssembly();
@@ -115,6 +128,38 @@ public static class WebEndpoints
                 return Results.Ok(new { ok = true, message = msg });
             }
             catch (Exception e) { return Results.Ok(new { ok = false, error = e.Message }); }
+        });
+
+        app.MapGet("/api/fetch-image", async (HttpContext c) =>
+        {
+            if (!IsLocalEditor(c, port)) return Results.StatusCode(403);
+            if (!Uri.TryCreate(c.Request.Query["url"].ToString(), UriKind.Absolute, out var u) || !ImageHostAllowed(u))
+                return Results.BadRequest(new { error = "host not allowed" });
+            try
+            {
+                for (int hop = 0; hop < 4; hop++)
+                {
+                    using var req = new HttpRequestMessage(HttpMethod.Get, u);
+                    req.Headers.UserAgent.ParseAdd("StreamDeckHost-IconFetch");
+                    using var resp = await imgHttp.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+                    if ((int)resp.StatusCode is >= 300 and < 400 && resp.Headers.Location != null)
+                    {
+                        u = new Uri(u, resp.Headers.Location);
+                        if (!ImageHostAllowed(u)) return Results.BadRequest(new { error = "redirect not allowed" });
+                        continue;
+                    }
+                    if (!resp.IsSuccessStatusCode) return Results.NotFound();
+                    var ct = resp.Content.Headers.ContentType?.MediaType ?? "";
+                    if (!ct.StartsWith("image/")) return Results.StatusCode(415);
+                    using var ms = new MemoryStream();
+                    await using var s = await resp.Content.ReadAsStreamAsync();
+                    var buf = new byte[16384]; int n;
+                    while ((n = await s.ReadAsync(buf)) > 0) { ms.Write(buf, 0, n); if (ms.Length > 2_000_000) return Results.StatusCode(413); }
+                    return Results.File(ms.ToArray(), ct);
+                }
+                return Results.NotFound();
+            }
+            catch (Exception e) { return Results.Json(new { error = e.Message }, statusCode: 502); }
         });
 
         app.MapGet("/api/info", (HttpContext c) =>

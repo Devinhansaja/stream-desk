@@ -210,8 +210,19 @@ function fromPayload(p) {
   if (p.kind === 'action') { const d = def(p.type), c = CAT_COLORS[d.cat] || CAT_COLORS.Flow; return newButton({ label: d.label.replace(/ \(.*\)/, ''), icon: d.icon, color1: c[0], color2: c[1], action: defaults(p.type) }); }
   if (p.kind === 'preset') { const [label, icon, c1, c2, action, confirm] = PRESETS[p.i]; return newButton({ label, icon, color1: c1, color2: c2, confirm: !!confirm, action: JSON.parse(JSON.stringify(action)) }); }
   if (p.kind === 'tile') { const [w, label, icon] = WIDGETS[p.i]; return newButton({ label, icon, widget: w, color1: '#22e58b', color2: '#22e58b', action: defaults('none') }); }
-  if (p.kind === 'app') { const a = apps && apps.find(x => x.id === p.id); if (!a) return null; return newButton({ label: a.name, icon: a.kind === 'game' ? 'sports_esports' : 'apps', image: a.icon ? 'data:image/png;base64,' + a.icon : null, color1: a.kind === 'game' ? '#00e676' : '#7c4dff', color2: a.kind === 'game' ? '#1b5e20' : '#1e90ff', action: { type: 'app', appId: a.id, appName: a.name } }); }
+  if (p.kind === 'app') { const a = apps && apps.find(x => x.id === p.id); if (!a) return null; const nb = newButton({ label: a.name, icon: a.kind === 'game' ? 'sports_esports' : 'apps', image: a.icon ? 'data:image/png;base64,' + a.icon : null, color1: a.kind === 'game' ? '#00e676' : '#7c4dff', color2: a.kind === 'game' ? '#1b5e20' : '#1e90ff', action: { type: 'app', appId: a.id, appName: a.name } }); if (!a.icon && a.id.startsWith('steam:')) autoSteamIcon(nb, a.id.slice(6)); return nb; }
   return null;
+}
+/** Steam games have no local icon: use the game's cover from Steam's CDN (through the host), cropped square. */
+async function autoSteamIcon(b, appid) {
+  try {
+    const r = await fetch('/api/fetch-image?url=' + encodeURIComponent(`https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/library_600x900.jpg`)); if (!r.ok) return;
+    const src = URL.createObjectURL(await r.blob());
+    const im = new Image(); await new Promise((ok, no) => { im.onload = ok; im.onerror = no; im.src = src; });
+    const c = document.createElement('canvas'); c.width = c.height = 128; const w = im.naturalWidth;
+    c.getContext('2d').drawImage(im, 0, Math.max(0, (im.naturalHeight - w) / 3), w, w, 0, 0, 128, 128);
+    b.image = c.toDataURL('image/jpeg', 0.85); changed();
+  } catch (e) {}
 }
 function dropOn(i, payload) {
   const b = fromPayload(payload); if (!b) return;
@@ -324,6 +335,37 @@ function drawPanel() {
   file.onchange = () => { const f = file.files[0]; if (!f) return; const im = new Image(); im.onload = () => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); const s = Math.min(im.width, im.height); x.drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, 128, 128); b.image = c.toDataURL('image/png'); changed(); }; im.src = URL.createObjectURL(f); };
   p.append(field('Icon', q), grid, el('div', { style: 'margin-top:8px' }, txt), field('…or your own image', file));
   if (b.image) p.append(el('button', { textContent: 'Remove image', onclick: () => { b.image = null; changed(); } }));
+  // ---- find an icon online: Iconify (logos/icons) + Google favicon (website icon); needs internet on the PC
+  const wq = el('input', { type: 'text', placeholder: 'Search online (discord, chrome, spotify…)', value: b.label || '' });
+  const wr = el('div', { className: 'icons' }), wmsg = el('div', { className: 'hint' });
+  const setImageFrom = async (url, viaHost) => {
+    wmsg.textContent = 'Adding icon…';
+    try {
+      const r = await fetch(viaHost ? '/api/fetch-image?url=' + encodeURIComponent(url) : url); if (!r.ok) throw new Error('HTTP ' + r.status);
+      const blob = await r.blob(); const src = URL.createObjectURL(blob.type ? blob : new Blob([blob], { type: 'image/svg+xml' }));
+      const im = new Image(); await new Promise((ok, no) => { im.onload = ok; im.onerror = () => no(new Error('could not read image')); im.src = src; });
+      const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); const s = Math.min(im.naturalWidth || 128, im.naturalHeight || 128) || 128;
+      x.drawImage(im, 0, 0, im.naturalWidth || 128, im.naturalHeight || 128, 0, 0, 128, 128);
+      b.image = c.toDataURL('image/png'); changed(); wmsg.textContent = '';
+    } catch (e) { wmsg.textContent = 'Could not add: ' + e.message; }
+  };
+  const searchOnline = async () => {
+    wr.innerHTML = ''; wmsg.textContent = 'Searching…';
+    try {
+      const j = await (await fetch('https://api.iconify.design/search?limit=64&query=' + encodeURIComponent(wq.value || 'app'))).json();
+      wmsg.textContent = j.icons && j.icons.length ? 'Click an icon to use it' : 'Nothing found';
+      (j.icons || []).forEach(n => { const [pre, name] = n.split(':'); const u = `https://api.iconify.design/${pre}/${name}.svg?height=128&color=%23ffffff`;
+        const d = el('div', { title: n }); d.append(el('img', { src: u, style: 'width:26px;height:26px' })); d.onclick = () => setImageFrom(u, false); wr.append(d); });
+    } catch (e) { wmsg.textContent = 'Search failed (is the PC online?): ' + e.message; }
+  };
+  const site = async () => {
+    let d = (wq.value || '').trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0]; if (!d) return;
+    if (!d.includes('.')) d += '.com';
+    setImageFrom(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(d)}&sz=128`, true);
+  };
+  wq.onkeydown = e => { if (e.key === 'Enter') searchOnline(); };
+  p.append(el('hr'), el('b', { textContent: 'Find icon online' }), el('div', { className: 'row', style: 'margin-top:6px' }, wq),
+    el('div', { className: 'row', style: 'margin-top:6px' }, el('button', { textContent: '🔍 Search icons', onclick: searchOnline }), el('button', { textContent: '🌐 Website icon (Google)', onclick: site })), wmsg, wr, el('hr'));
 
   const colorRow = (label, key) => { const c = el('input', { type: 'color', value: b[key] }); c.oninput = () => { b[key] = c.value; changed(true); };
     return field(label, el('div', { className: 'sw' }, PALETTE.map(h => { const i = el('i'); i.style.background = h; i.onclick = () => { b[key] = h; changed(); }; return i; }), c)); };
