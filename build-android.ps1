@@ -28,6 +28,23 @@ try {
         Set-Content $manifest $xml -Encoding utf8
         Write-Host "Patched AndroidManifest.xml"
     }
+    # Newer plugin versions need a newer toolchain than the generated template pins.
+    $sg = 'android\settings.gradle'
+    if (Test-Path $sg) {
+        $c = (Get-Content $sg -Raw) -replace '("com.android.application" version ")[^"]+', '${1}8.7.3' -replace '("org.jetbrains.kotlin.android" version ")[^"]+', '${1}2.1.0'
+        [IO.File]::WriteAllText((Resolve-Path $sg), $c.TrimStart([char]0xFEFF), (New-Object Text.UTF8Encoding $false))  # no BOM: Gradle rejects it
+    }
+    $gw = 'android\gradle\wrapper\gradle-wrapper.properties'
+    if (Test-Path $gw) {
+        $c = (Get-Content $gw -Raw) -replace 'gradle-[0-9.]+-(all|bin)\.zip', 'gradle-8.9-all.zip'
+        [IO.File]::WriteAllText((Resolve-Path $gw), $c.TrimStart([char]0xFEFF), (New-Object Text.UTF8Encoding $false))
+    }
+    # CameraX (QR scanner) needs minSdk 23.
+    $bg = 'android\app\build.gradle'
+    if (Test-Path $bg) {
+        $c = (Get-Content $bg -Raw) -replace 'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 23'
+        [IO.File]::WriteAllText((Resolve-Path $bg), $c.TrimStart([char]0xFEFF), (New-Object Text.UTF8Encoding $false))
+    }
     if ($SetupOnly) { return }
 
     flutter pub get
