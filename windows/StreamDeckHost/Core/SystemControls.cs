@@ -22,6 +22,20 @@ public static class AudioControl
         if (percent > 0 && d.AudioEndpointVolume.Mute) d.AudioEndpointVolume.Mute = false;
     }
 
+    /// <summary>Sets the volume and shows an on-screen flyout like Windows' own volume indicator.</summary>
+    public static void SetVolumeWithFlyout(int target)
+    {
+        target = Math.Clamp(target, 0, 100);
+        SetVolume(target);
+        StreamDeckHost.UI.Osd.ShowBar(target == 0 ? "\uE74F" : "\uE767", "Volume", target);
+    }
+
+    public static void ToggleMuteWithFlyout()
+    {
+        bool mute = !GetMuted();
+        SetMuted(mute);
+        StreamDeckHost.UI.Osd.ShowBar(mute ? "\uE74F" : "\uE767", "Volume", GetVolume());
+    }
     public static bool GetMuted()
     {
         using var en = new MMDeviceEnumerator();

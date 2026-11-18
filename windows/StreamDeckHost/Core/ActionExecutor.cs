@@ -38,29 +38,34 @@ public sealed class ActionExecutor
             case "none": break; // live tile with no action
 
             // ---------- audio ----------
-            case "volume_up": AudioControl.SetVolume(AudioControl.GetVolume() + Int(action, "step", 5)); break;
-            case "volume_down": AudioControl.SetVolume(AudioControl.GetVolume() - Int(action, "step", 5)); break;
-            case "volume_set": AudioControl.SetVolume(Int(action, "value", 50)); break;
-            case "mute_toggle": AudioControl.SetMuted(!AudioControl.GetMuted()); break;
-            case "mute": AudioControl.SetMuted(Bool(action, "value", true)); break;
+            case "volume_up": AudioControl.SetVolumeWithFlyout(AudioControl.GetVolume() + Int(action, "step", 5)); break;
+            case "volume_down": AudioControl.SetVolumeWithFlyout(AudioControl.GetVolume() - Int(action, "step", 5)); break;
+            case "volume_set": AudioControl.SetVolumeWithFlyout(Int(action, "value", 50)); break;
+            case "mute_toggle": AudioControl.ToggleMuteWithFlyout(); break;
+            case "mute": if (AudioControl.GetMuted() != Bool(action, "value", true)) AudioControl.ToggleMuteWithFlyout(); break;
             case "mic_toggle":
-                AudioControl.SetMicMuted(!(AudioControl.GetMicMuted() ?? false)); break;
-            case "mic_mute": AudioControl.SetMicMuted(Bool(action, "value", true)); break;
+            {
+                bool nowMuted = !(AudioControl.GetMicMuted() ?? false);
+                AudioControl.SetMicMuted(nowMuted);
+                StreamDeckHost.UI.Osd.ShowMic(nowMuted);
+                break;
+            }
+            case "mic_mute": { bool m = Bool(action, "value", true); AudioControl.SetMicMuted(m); StreamDeckHost.UI.Osd.ShowMic(m); break; }
 
             // ---------- display ----------
             case "brightness_up":
             {
                 int cur = BrightnessControl.Get();
                 if (cur < 0) throw new InvalidOperationException("No controllable display found");
-                BrightnessControl.Set(cur + Int(action, "step", 10)); break;
+                BrightnessControl.Set(cur + Int(action, "step", 10)); StreamDeckHost.UI.Osd.ShowBar("\uE706", "Brightness", BrightnessControl.Get()); break;
             }
             case "brightness_down":
             {
                 int cur = BrightnessControl.Get();
                 if (cur < 0) throw new InvalidOperationException("No controllable display found");
-                BrightnessControl.Set(cur - Int(action, "step", 10)); break;
+                BrightnessControl.Set(cur - Int(action, "step", 10)); StreamDeckHost.UI.Osd.ShowBar("\uE706", "Brightness", BrightnessControl.Get()); break;
             }
-            case "brightness_set": BrightnessControl.Set(Int(action, "value", 50)); break;
+            case "brightness_set": BrightnessControl.Set(Int(action, "value", 50)); StreamDeckHost.UI.Osd.ShowBar("\uE706", "Brightness", BrightnessControl.Get()); break;
 
             // ---------- input ----------
             case "hotkey": Native.Hotkey(Str(action, "keys")); break;

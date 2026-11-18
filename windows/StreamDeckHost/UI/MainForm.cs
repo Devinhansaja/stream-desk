@@ -67,7 +67,7 @@ public sealed class MainForm : Form
         ShowPage(store.Data.Devices.Count > 0 ? "Editor" : "Pairing");
 
         if (store.Data.AutoUsb) StartUsbLoop();
-        HandleCreated += (_, _) => _ = Task.Run(StartupTasksAsync);
+        HandleCreated += (_, _) => { Osd.Init(this); _ = Task.Run(StartupTasksAsync); };
     }
 
     protected override void SetVisibleCore(bool value)
