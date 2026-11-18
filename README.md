@@ -25,6 +25,12 @@ docs/PROTOCOL.md        Wire protocol and action reference
    click a button to change label, icon (6000+ built-in, emoji, your own image or an app's real icon), colors, glow, action,
    macro steps, confirmation. Changes autosave and appear on the phone immediately.
 
+### Widget pages
+In the editor, tab bar → **＋ Widget page**: **Clock** (digital/analog), **Lyrics** (what's playing on the PC, e.g. Spotify, with synced lyrics from
+LRCLIB; the PC needs internet), **YouTube** (plays a video/playlist on the phone while that page is showing) and **PC screen** (mirrors the main
+monitor; tap = click, long-press = right-click, drag = drag). Swipe to them like any page. Keys show only icons by default (no outline, no title);
+tick *Show titles on keys* to bring titles back. Folders (Flow → Folder) group keys.
+
 ### Connection
 * **Wi-Fi:** same network as the PC. The phone remembers addresses and re-discovers the PC by UDP broadcast if its IP changes.
 * **Any network (away from home):** host → **Internet** tab. Three options, all still require pairing:

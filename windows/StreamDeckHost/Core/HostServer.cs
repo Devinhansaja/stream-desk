@@ -25,6 +25,9 @@ public sealed class HostServer : IDisposable
         public string Ip = "";
         public DeviceRecord? Device;
         public readonly SemaphoreSlim SendLock = new(1, 1);
+        public volatile bool Media;     // viewing a lyrics / now-playing page
+        public volatile bool Screen;    // viewing the shared PC screen
+        public string LyricsKey = "";   // lyrics this client already has
     }
 
     readonly SettingsStore store;
@@ -178,6 +181,8 @@ public sealed class HostServer : IDisposable
         StartDiscovery();
         if (store.Data.InternetTunnel) Tunnel.Start();
         _ = Task.Run(StatusLoop);
+        _ = Task.Run(MediaLoop);
+        _ = Task.Run(ScreenLoop);
         WriteDevPairing();
     }
 
@@ -285,6 +290,79 @@ public sealed class HostServer : IDisposable
         finally { c.SendLock.Release(); }
     }
 
+    async Task SendBin(Client c, byte[] bytes)
+    {
+        if (!await c.SendLock.WaitAsync(0)) return; // drop the frame if the phone is still receiving the previous one
+        try
+        {
+            if (c.Ws.State == WebSocketState.Open)
+                await c.Ws.SendAsync(bytes, WebSocketMessageType.Binary, true, CancellationToken.None);
+        }
+        catch { }
+        finally { c.SendLock.Release(); }
+    }
+
+    // ------------------------------------------------------------------ now playing / lyrics / screen
+    string mediaKey = "";
+    JsonArray? mediaLyrics;
+
+    async Task MediaLoop()
+    {
+        while (!cts.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(1000, cts.Token);
+                var subs = clients.Values.Where(x => x.Device != null && x.Media).ToList();
+                if (subs.Count == 0) continue;
+                var n = await MediaInfo.GetAsync();
+                if (n != null && n.Key != mediaKey)
+                {
+                    mediaKey = n.Key; mediaLyrics = null;
+                    var snapshot = n;
+                    _ = Task.Run(async () => { var l = await MediaInfo.LyricsAsync(snapshot); if (mediaKey == snapshot.Key) { mediaLyrics = l ?? new JsonArray(); await PushLyrics(); } });
+                }
+                if (n == null) mediaKey = "";
+                var msg = n == null
+                    ? new JsonObject { ["t"] = "media", ["none"] = true }
+                    : new JsonObject { ["t"] = "media", ["key"] = n.Key, ["title"] = n.Title, ["artist"] = n.Artist, ["pos"] = n.Pos, ["dur"] = n.Dur, ["playing"] = n.Playing, ["app"] = n.App };
+                foreach (var c in subs) await Send(c, (JsonObject)msg.DeepClone());
+                await PushLyrics();
+            }
+            catch (OperationCanceledException) { break; }
+            catch { }
+        }
+    }
+
+    async Task PushLyrics()
+    {
+        var l = mediaLyrics;
+        if (l == null) return;
+        foreach (var c in clients.Values.Where(x => x.Device != null && x.Media && x.LyricsKey != mediaKey))
+        {
+            c.LyricsKey = mediaKey;
+            await Send(c, new JsonObject { ["t"] = "lyrics", ["key"] = mediaKey, ["lines"] = l.DeepClone() });
+        }
+    }
+
+    async Task ScreenLoop()
+    {
+        while (!cts.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(110, cts.Token);
+                var subs = clients.Values.Where(x => x.Device != null && x.Screen).ToList();
+                if (subs.Count == 0) continue;
+                var jpg = await Task.Run(() => ScreenShare.Capture());
+                if (jpg == null) continue;
+                foreach (var c in subs) _ = SendBin(c, jpg);
+            }
+            catch (OperationCanceledException) { break; }
+            catch { }
+        }
+    }
+
     static string S(JsonNode m, string k) => m[k] is JsonValue v && v.TryGetValue<string>(out var s) ? s : "";
 
     async Task OnMessage(Client c, JsonNode m)
@@ -353,6 +431,22 @@ public sealed class HostServer : IDisposable
                     await Send(c, res);
                     await BroadcastStatus(false);
                 });
+                break;
+            }
+
+            case "media_sub":
+                c.Media = m["on"] is JsonValue mv && mv.TryGetValue<bool>(out var mon) && mon;
+                c.LyricsKey = "";
+                break;
+
+            case "screen_sub":
+                c.Screen = m["on"] is JsonValue sv && sv.TryGetValue<bool>(out var son) && son;
+                break;
+
+            case "pointer":
+            {
+                double Num(string k) => m[k] is JsonValue v && v.TryGetValue<double>(out var d) ? d : 0;
+                ScreenShare.Pointer(S(m, "kind"), Num("x"), Num("y"), (int)Num("delta"));
                 break;
             }
 

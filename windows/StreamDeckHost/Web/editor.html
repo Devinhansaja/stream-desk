@@ -217,7 +217,7 @@ function keyNode(b) {
   else if (b.image) k.append(el('img', { src: b.image }));
   else { const ic = el('div', { className: 'ic' }); ic.style.color = tint; if (neon) ic.style.textShadow = `0 0 14px ${b.color1}`;
     if ((b.icon || '').startsWith('t:')) { ic.classList.add('txt'); ic.textContent = b.icon.slice(2); } else ic.textContent = glyph(b.icon); k.append(ic); }
-  if (b.label && !b.hideLabel && L.showLabels !== false) k.append(el('div', { className: 'lb', textContent: b.label }));
+  if (b.label && !b.hideLabel && L.showLabels === true) k.append(el('div', { className: 'lb', textContent: b.label }));
   return k;
 }
 
@@ -281,6 +281,32 @@ function addToFree(payload) {
   dropOn(i, payload);
 }
 
+// Widget pages fill a whole phone page instead of keys.
+const WKIND = {
+  clock:   { icon: '⏰', name: 'Clock',            defaults: { style: 'digital', hour12: true }, about: 'A big clock with the date. Digital or analog.' },
+  lyrics:  { icon: '🎵', name: 'Lyrics',           about: 'Shows the song playing on the PC (Spotify, YouTube Music, browser…) with time-synced lyrics from LRCLIB. Needs the phone connected to the PC; the PC needs internet to fetch lyrics.' },
+  youtube: { icon: '▶',  name: 'YouTube video',    defaults: { url: '' }, about: 'Plays a YouTube video or playlist on the phone itself (the phone needs internet). Plays only while this page is on screen.' },
+  screen:  { icon: '🖥', name: 'PC screen (2nd display)', about: 'Mirrors your PC screen on the phone. Tap = click, long-press = right-click, drag = move/drag. Windows cannot make a phone a true extended monitor without a driver, so this shows the main monitor.' },
+};
+function drawWidgetPage(pg, g, withPanel) {
+  const info = WKIND[pg.kind] || { icon: '▣', name: pg.kind, about: '' };
+  g.className = ''; g.style.gridTemplateColumns = '1fr'; g.style.gridTemplateRows = '1fr';
+  g.append(el('div', { className: 'key', style: 'flex-direction:column;gap:8px;text-align:center;padding:16px;display:flex;align-items:center;justify-content:center' },
+    el('div', { textContent: info.icon, style: 'font-size:56px' }), el('b', { textContent: info.name }), el('div', { textContent: 'Full-page widget. Swipe to it on the phone like any page.', className: 'hint' })));
+  if (!withPanel) return;
+  const p = $('panel'); p.innerHTML = '';
+  const field = (label, node) => el('label', { className: 'f' }, label, node);
+  p.append(el('div', { className: 'hint', textContent: info.about, style: 'margin-bottom:8px' }));
+  p.append(field('Page name', el('input', { type: 'text', value: pg.name || '', oninput: e => { pg.name = e.target.value; changed(true); } })));
+  if (pg.kind === 'clock') {
+    p.append(field('Style', el('select', { onchange: e => { pg.style = e.target.value; changed(true); } }, el('option', { value: 'digital', textContent: 'Digital', selected: pg.style !== 'analog' }), el('option', { value: 'analog', textContent: 'Analog', selected: pg.style === 'analog' }))));
+    p.append(el('label', { className: 'f', style: 'display:flex;gap:8px;align-items:center' }, el('input', { type: 'checkbox', checked: pg.hour12 !== false, onchange: e => { pg.hour12 = e.target.checked; changed(true); } }), '12-hour time (digital)'));
+  }
+  if (pg.kind === 'youtube') {
+    p.append(field('YouTube link (video or playlist)', el('input', { type: 'text', value: pg.url || '', placeholder: 'https://www.youtube.com/watch?v=…', onchange: e => { pg.url = e.target.value.trim(); changed(true); } })));
+  }
+}
+
 function draw(panel = true) {
   const ps = $('profSel'); ps.innerHTML = '';
   L.profiles.forEach((p, i) => ps.append(el('option', { value: i, textContent: p.name + (p.id === L.activeProfile ? '  (phone default)' : ''), selected: i === pi })));
@@ -288,15 +314,19 @@ function draw(panel = true) {
   L.profiles.forEach((p, i) => pl.append(el('div', { className: 'prow' + (i === pi ? ' on' : ''), textContent: p.name + (p.id === L.activeProfile ? '  ★' : ''), title: p.id === L.activeProfile ? 'Phone default' : '', onclick: () => { pi = i; gi = 0; sel = -1; draw(); } })));
   const tabs = $('pageTabs'); tabs.innerHTML = '';
   let vis = 0;
-  prof().pages.forEach((p, i) => tabs.append(el('div', { className: 'tab' + (i === gi ? ' on' : '') + (p.hidden ? ' folder' : ''), textContent: p.hidden ? '📁 ' + p.name : String(++vis), title: p.name + (p.hidden ? ' (folder)' : ''), onclick: () => { gi = i; sel = -1; draw(); } })));
+  prof().pages.forEach((p, i) => tabs.append(el('div', { className: 'tab' + (i === gi ? ' on' : '') + (p.hidden ? ' folder' : ''), textContent: p.hidden ? '📁 ' + p.name : (p.kind ? (++vis, WKIND[p.kind] ? WKIND[p.kind].icon : '▣') : String(++vis)), title: p.name + (p.hidden ? ' (folder)' : ''), onclick: () => { gi = i; sel = -1; draw(); } })));
   tabs.append(el('div', { className: 'tab', textContent: '+', title: 'Add page', onclick: () => { prof().pages.push(newPage('Page ' + (prof().pages.length + 1), 4, 4)); gi = prof().pages.length - 1; sel = -1; changed(); } }));
+  { const s = el('select', { className: 'tab', title: 'Add a widget page (clock, lyrics, YouTube, PC screen)', style: 'width:auto' }, el('option', { value: '', textContent: '＋ Widget page ▾' }), Object.entries(WKIND).map(([k, v]) => el('option', { value: k, textContent: v.icon + '  ' + v.name })));
+    s.onchange = () => { if (!s.value) return; const k = s.value, np = newPage(WKIND[k].name, 1, 1); np.kind = k; Object.assign(np, WKIND[k].defaults || {}); prof().pages.push(np); gi = prof().pages.length - 1; sel = -1; changed(); };
+    tabs.append(s); }
   const pg = page(); $('cols').value = pg.cols; $('rows').value = pg.rows; $('styleSel').value = L.style === 'neon' ? 'neon' : 'flat';
   const bgKey = JSON.stringify(L.background || null);
   if (bgKey !== window.lastBg) { window.lastBg = bgKey; applyBg($('bgLayer'), L.background, L.bgDim); } else setBgDim($('bgLayer'), L.bgDim);
-  $('showLabels').checked = L.showLabels !== false; $('keyAlpha').value = L.keyAlpha == null ? 0.55 : L.keyAlpha; $('keyBlur').value = L.keyBlur || 0;
+  $('showLabels').checked = L.showLabels === true; $('keyAlpha').value = L.keyAlpha == null ? 0.55 : L.keyAlpha; $('keyBlur').value = L.keyBlur || 0;
   $('bgDim').value = L.bgDim == null ? 0.25 : L.bgDim; $('bgPreset').value = L.background && L.background.type === 'preset' ? L.background.id : '';
   const g = $('grid'); g.innerHTML = ''; g.className = L.style === 'neon' ? '' : 'flat'; g.style.setProperty('--ar', pg.cols / pg.rows);
   g.style.gridTemplateColumns = `repeat(${pg.cols},minmax(0,1fr))`; g.style.gridTemplateRows = `repeat(${pg.rows},minmax(0,1fr))`;
+  if (pg.kind) { drawWidgetPage(pg, g, panel); return; }
   const cov = coveredSet(pg);
   pg.slots.forEach((b, i) => {
     if (cov.has(i)) return;

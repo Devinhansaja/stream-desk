@@ -19,7 +19,7 @@
   .page { flex:0 0 100%; scroll-snap-align:start; scroll-snap-stop:always; display:grid; gap:var(--gap); padding:var(--gap); min-height:0; }
   /* ---------- keys: flat style (default) ---------- */
   .key { container-type:size; position:relative; min-width:0; min-height:0; border-radius:var(--radius); overflow:hidden;
-         background:var(--fill,rgba(0,0,0,.55)); border:2px solid var(--bc,#555); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3cqmin;
+         background:var(--fill,rgba(0,0,0,.55)); border:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3cqmin;
          transition:transform .08s, filter .2s; }
   .key.down { transform:scale(.93); }
   .key.empty { background:rgba(0,0,0,.25); border:1px solid #ffffff12; pointer-events:none; }
@@ -36,7 +36,29 @@
   .key.busy::after { content:''; position:absolute; inset:0; background:#ffffff30; animation:p .45s forwards; }
   @keyframes p { from{opacity:1} to{opacity:0} }
   /* ---------- neon style ---------- */
-  body.neon .key { border:2px solid transparent; background:linear-gradient(180deg,var(--t1),#080818) padding-box, linear-gradient(135deg,var(--c1),var(--c2)) border-box; box-shadow:0 0 var(--gl) var(--ga); overflow:visible; }
+  body.neon .key { border:0; background:linear-gradient(180deg,var(--t1),#080818); box-shadow:0 0 var(--gl) var(--ga); overflow:visible; }
+  /* icon-only keys: no outline, icon fills the key */
+  .key.nolabel .ic { font-size:62cqmin; }
+  .key.nolabel .ic.txt { font-size:54cqmin; }
+  .key.nolabel img { width:72cqmin; height:72cqmin; }
+  /* ---------- widget pages ---------- */
+  .page.wpage { display:flex; align-items:center; justify-content:center; position:relative; padding:0; overflow:hidden; }
+  .edge { position:absolute; top:0; bottom:0; width:26px; z-index:3; } .edge.l { left:0; } .edge.r { right:0; }
+  .clockw { text-align:center; line-height:1; }
+  .clockw .t { font-size:min(26vw,40vh); font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:-.02em; text-shadow:0 0 30px #000a; }
+  .clockw .d { font-size:min(5vw,7vh); opacity:.8; margin-top:2vh; }
+  .clockw svg { width:min(80vw,80vh); height:min(80vw,80vh); }
+  .lyw { width:100%; height:100%; display:flex; flex-direction:column; padding:14px 22px; }
+  .lyw .h { flex:0 0 auto; text-align:center; opacity:.8; font-size:14px; margin-bottom:6px; text-shadow:0 1px 3px #000; }
+  .lyw .h b { display:block; font-size:18px; opacity:1; }
+  .lyw .L { flex:1; overflow:hidden; position:relative; -webkit-mask-image:linear-gradient(transparent,#000 22%,#000 78%,transparent); mask-image:linear-gradient(transparent,#000 22%,#000 78%,transparent); }
+  .lyw .L > div { position:absolute; left:0; right:0; transition:transform .45s ease; }
+  .lyw p { margin:0; padding:7px 0; text-align:center; font-size:clamp(18px,4.4vw,34px); font-weight:700; opacity:.38; transition:opacity .3s, transform .3s; text-shadow:0 1px 4px #000; }
+  .lyw p.on { opacity:1; transform:scale(1.07); }
+  .lyw .none { margin:auto; opacity:.7; text-align:center; padding:20px; }
+  .ytw, .scrw { position:absolute; inset:0; width:100%; height:100%; border:0; background:#000; }
+  .scrw { object-fit:contain; touch-action:none; }
+  .wmsg { position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); text-align:center; opacity:.75; padding:20px; pointer-events:none; text-shadow:0 1px 3px #000; }
   body.neon .key .ic { color:color-mix(in srgb,var(--c1) 65%,white); text-shadow:0 0 14px var(--c1); }
   /* ---------- overlays (no bars: keys fill the screen) ---------- */
   #gear { position:fixed; top:calc(6px + env(safe-area-inset-top)); right:calc(6px + env(safe-area-inset-right)); width:30px; height:30px; border-radius:50%; background:#000000aa; display:grid; place-items:center; font:20px MI; opacity:.4; z-index:5; }
@@ -120,7 +142,9 @@ function render() {
   // Folder pages are hidden from the swipe pager and only open from a folder key.
   let shown = folderId ? p.pages.filter(x => x.id === folderId) : p.pages.filter(x => !x.hidden);
   if (!shown.length) { folderId = null; shown = p.pages.filter(x => !x.hidden); if (!shown.length) shown = p.pages; }
+  shownPages = shown;
   shown.forEach(pg => {
+    if (pg.kind) { const w = widgetPage(pg); host.appendChild(w); dots.appendChild(document.createElement('i')); return; }
     const el = document.createElement('div'); el.className = 'page';
     el.style.gridTemplateColumns = `repeat(${pg.cols},minmax(0,1fr))`; el.style.gridTemplateRows = `repeat(${pg.rows},minmax(0,1fr))`;
     const covered = new Set();
@@ -142,8 +166,116 @@ function render() {
   dots.style.display = shown.length > 1 ? 'flex' : 'none';
   curPage = Math.min(curPage, shown.length - 1);
   host.scrollTo({ left: curPage * host.clientWidth });
-  markDots(); refreshActive(); refreshWidgets(); refreshSliders(); setConn(connected ? 'on' : 'off');
+  markDots(); refreshActive(); refreshWidgets(); refreshSliders(); setConn(connected ? 'on' : 'off'); activate();
 }
+
+// ---- widget pages: clock, lyrics, YouTube, PC screen -------------------------------------------------
+let shownPages = [], subMedia = false, subScreen = false, med = null, lyr = { key: '', lines: [] }, lyIdx = -1, frameUrl = null;
+const curKind = () => { const p = shownPages[curPage]; return p && p.kind; };
+function sub(type, on) { send({ t: type, on }); }
+function activate() {
+  const k = curKind();
+  const wantMedia = k === 'lyrics', wantScreen = k === 'screen';
+  if (connected) {
+    if (wantMedia !== subMedia) { subMedia = wantMedia; sub('media_sub', wantMedia); }
+    if (wantScreen !== subScreen) { subScreen = wantScreen; sub('screen_sub', wantScreen); }
+  }
+  document.querySelectorAll('iframe.ytw').forEach(f => { const on = k === 'youtube' && f.closest('.wpage') === $('pages').children[curPage]; const want = on ? f.dataset.src : 'about:blank'; if (f.getAttribute('src') !== want) f.setAttribute('src', want); });
+}
+function resetSubs() { subMedia = false; subScreen = false; activate(); }
+function mkPage(extra) { const el = document.createElement('div'); el.className = 'page wpage'; el.dataset.kind = extra; ['l', 'r'].forEach(s => { const e = document.createElement('div'); e.className = 'edge ' + s; el.append(e); }); return el; }
+function widgetPage(pg) {
+  const el = mkPage(pg.kind);
+  if (pg.kind === 'clock') {
+    const w = document.createElement('div'); w.className = 'clockw'; el.append(w);
+    const draw = () => {
+      if (!w.isConnected) return; const d = new Date();
+      if (pg.style === 'analog') {
+        const h = d.getHours() % 12 + d.getMinutes() / 60, m = d.getMinutes() + d.getSeconds() / 60, s = d.getSeconds();
+        const hand = (a, len, wd, c) => `<line x1="100" y1="100" x2="${100 + len * Math.sin(a * Math.PI / 180)}" y2="${100 - len * Math.cos(a * Math.PI / 180)}" stroke="${c}" stroke-width="${wd}" stroke-linecap="round"/>`;
+        let ticks = ''; for (let i = 0; i < 12; i++) { const a = i * 30 * Math.PI / 180; ticks += `<line x1="${100 + 84 * Math.sin(a)}" y1="${100 - 84 * Math.cos(a)}" x2="${100 + 92 * Math.sin(a)}" y2="${100 - 92 * Math.cos(a)}" stroke="#fff" stroke-width="3" opacity=".8"/>`; }
+        w.innerHTML = `<svg viewBox="0 0 200 200"><circle cx="100" cy="100" r="96" fill="#00000066" stroke="#ffffff55" stroke-width="2"/>${ticks}${hand(h * 30, 50, 6, '#fff')}${hand(m * 6, 72, 4, '#fff')}${hand(s * 6, 80, 2, '#ff4d6d')}<circle cx="100" cy="100" r="5" fill="#ff4d6d"/></svg><div class="d">${d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}</div>`;
+      } else {
+        const t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: pg.hour12 !== false });
+        w.innerHTML = `<div class="t">${t}</div><div class="d">${d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' })}</div>`;
+      }
+      setTimeout(draw, pg.style === 'analog' ? 1000 : 5000);
+    };
+    setTimeout(draw, 0);
+  } else if (pg.kind === 'lyrics') {
+    const w = document.createElement('div'); w.className = 'lyw'; w.innerHTML = '<div class="h"><b>Nothing playing</b><span></span></div><div class="L"><div></div></div>'; el.append(w);
+  } else if (pg.kind === 'youtube') {
+    const f = document.createElement('iframe'); f.className = 'ytw'; f.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture'; f.setAttribute('allowfullscreen', ''); f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    f.dataset.src = ytEmbed(pg.url || ''); f.setAttribute('src', 'about:blank');
+    el.append(f);
+    if (!pg.url) { const m = document.createElement('div'); m.className = 'wmsg'; m.textContent = 'Set a YouTube link for this page in the PC editor.'; el.append(m); }
+  } else if (pg.kind === 'screen') {
+    const img = document.createElement('img'); img.className = 'scrw'; img.alt = ''; el.append(img);
+    const m = document.createElement('div'); m.className = 'wmsg'; m.textContent = 'Connecting to PC screen…'; m.id = 'scrMsg'; el.append(m);
+    bindScreenTouch(img);
+  }
+  return el;
+}
+function ytEmbed(u) {
+  u = u.trim(); if (!u) return 'about:blank';
+  const p = '&autoplay=1&playsinline=1&rel=0&modestbranding=1';
+  let m = u.match(/[?&]list=([\w-]+)/), v = u.match(/(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/|\/live\/)([\w-]{11})/);
+  if (v) return `https://www.youtube.com/embed/${v[1]}?${m ? 'list=' + m[1] : ''}${p}`;
+  if (m) return `https://www.youtube.com/embed/videoseries?list=${m[1]}${p}`;
+  if (/^[\w-]{11}$/.test(u)) return `https://www.youtube.com/embed/${u}?${p.slice(1)}`;
+  return /^https?:\/\//i.test(u) ? u : 'https://' + u;
+}
+function onFrame(blob) {
+  const img = document.querySelector('img.scrw'); if (!img) return;
+  const url = URL.createObjectURL(blob); const old = frameUrl; frameUrl = url; img.src = url; if (old) URL.revokeObjectURL(old);
+  const m = $('scrMsg'); if (m) m.remove();
+}
+function bindScreenTouch(img) {
+  const pos = e => {
+    const r = img.getBoundingClientRect(), ar = (img.naturalWidth || 16) / (img.naturalHeight || 9);
+    let w = r.width, h = r.width / ar; if (h > r.height) { h = r.height; w = h * ar; }
+    const l = r.left + (r.width - w) / 2, t = r.top + (r.height - h) / 2;
+    return { x: (e.clientX - l) / w, y: (e.clientY - t) / h };
+  };
+  let st = null;
+  img.addEventListener('pointerdown', e => {
+    st = { x: e.clientX, y: e.clientY, drag: false, long: false, p: pos(e), moved: 0 };
+    st.timer = setTimeout(() => { if (st && !st.drag) { st.long = true; native('h'); send({ t: 'pointer', kind: 'rclick', ...st.p }); } }, 600);
+    try { img.setPointerCapture(e.pointerId); } catch (x) {}
+  });
+  img.addEventListener('pointermove', e => {
+    if (!st || st.long) return;
+    if (!st.drag && Math.hypot(e.clientX - st.x, e.clientY - st.y) > 10) { st.drag = true; clearTimeout(st.timer); send({ t: 'pointer', kind: 'down', ...st.p }); }
+    if (st.drag) { const n = Date.now(); if (n - (st.last || 0) > 40) { st.last = n; send({ t: 'pointer', kind: 'move', ...pos(e) }); } }
+  });
+  const end = e => {
+    if (!st) return; clearTimeout(st.timer);
+    if (st.drag) send({ t: 'pointer', kind: 'up', ...pos(e) });
+    else if (!st.long && e.type === 'pointerup') { native('h'); send({ t: 'pointer', kind: 'click', ...st.p }); }
+    st = null;
+  };
+  img.addEventListener('pointerup', end); img.addEventListener('pointercancel', end);
+}
+function lyricTick() {
+  const w = document.querySelector('.lyw'); if (!w) return;
+  const h = w.querySelector('.h'), box = w.querySelector('.L > div'), L = w.querySelector('.L');
+  if (!med || med.none) { h.innerHTML = '<b>Nothing playing</b><span>Play a song on the PC (Spotify, YouTube Music, …)</span>'; box.innerHTML = ''; lyr = { key: '', lines: [] }; return; }
+  const key = med.key;
+  if (h.dataset.k !== key) { h.dataset.k = key; h.innerHTML = ''; const b = document.createElement('b'), s = document.createElement('span'); b.textContent = med.title; s.textContent = med.artist; h.append(b, s); }
+  if (box.dataset.k !== lyr.key) {
+    box.dataset.k = lyr.key; box.innerHTML = ''; lyIdx = -1;
+    if (!lyr.lines.length) { const p = document.createElement('p'); p.className = 'on'; p.textContent = lyr.key === key ? 'No lyrics found for this song' : 'Loading lyrics…'; p.style.opacity = .6; box.append(p); }
+    else lyr.lines.forEach(l => { const p = document.createElement('p'); p.textContent = l.l || '♪'; box.append(p); });
+  }
+  if (!lyr.lines.length || lyr.key !== key) return;
+  const now = med.pos + (med.playing ? (Date.now() - med.at) / 1000 : 0);
+  let i = -1; for (let j = 0; j < lyr.lines.length; j++) { if (lyr.lines[j].t <= now + 0.25) i = j; else break; }
+  if (i !== lyIdx) {
+    lyIdx = i; [...box.children].forEach((p, j) => p.classList.toggle('on', j === i));
+    const p = box.children[Math.max(0, i)]; if (p) box.style.transform = `translateY(${L.clientHeight / 2 - p.offsetTop - p.offsetHeight / 2}px)`;
+  }
+}
+setInterval(lyricTick, 250);
 
 function keyEl(b) {
   const k = document.createElement('div'); k.className = 'key'; k._b = b;
@@ -165,7 +297,8 @@ function keyEl(b) {
     else ic.textContent = icons[b.icon] ? String.fromCodePoint(icons[b.icon]) : (icons.bolt ? String.fromCodePoint(icons.bolt) : '?');
     k.append(ic);
   }
-  if (b.label && !b.hideLabel && !(layout && layout.showLabels === false)) { const lb = document.createElement('div'); lb.className = 'lb'; lb.textContent = b.label; k.append(lb); }
+  if (b.label && !b.hideLabel && layout && layout.showLabels === true) { const lb = document.createElement('div'); lb.className = 'lb'; lb.textContent = b.label; k.append(lb); }
+  else k.classList.add('nolabel');
   k.addEventListener('pointerdown', () => k.classList.add('down'));
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(e => k.addEventListener(e, () => k.classList.remove('down')));
   if (!k.classList.contains('slider')) k.addEventListener('click', () => press(k, b));
@@ -189,6 +322,7 @@ function makeSlider(k, b) {
   const name = b.icon && !b.icon.startsWith('t:') && icons[b.icon] ? b.icon : sd.icon;
   ic.textContent = icons[name] ? String.fromCodePoint(icons[name]) : '';
   const val = document.createElement('div'); val.className = 'sval';
+  if (b.hideLabel || !(layout && layout.showLabels === true)) val.style.display = 'none';
   k.append(fill, ic, val);
   let dragging = false, lastSend = 0, pct = 0;
   const send1 = v => send({ t: 'action', id: nextId++, action: { type: sd.type, value: v } });
@@ -217,7 +351,7 @@ function refreshActive() {
 function markDots() { [...$('dots').children].forEach((d, i) => d.classList.toggle('on', i === curPage)); }
 $('pages').addEventListener('scroll', () => {
   const h = $('pages'); const i = Math.round(h.scrollLeft / Math.max(1, h.clientWidth));
-  if (i !== curPage) { curPage = i; markDots(); const d = $('dots'); d.classList.add('show'); clearTimeout(dotsT); dotsT = setTimeout(() => d.classList.remove('show'), 1200); }
+  if (i !== curPage) { curPage = i; markDots(); activate(); const d = $('dots'); d.classList.add('show'); clearTimeout(dotsT); dotsT = setTimeout(() => d.classList.remove('show'), 1200); }
 }, { passive: true });
 
 const send = o => { if (ws && ws.readyState === 1) { ws.send(JSON.stringify(o)); return true; } return false; };
@@ -251,7 +385,9 @@ function setLayout(l, cache) {
 function onMsg(m) {
   if (m.id && pending[m.id]) { const f = pending[m.id]; delete pending[m.id]; f(m); return; }
   switch (m.t) {
-    case 'auth_ok': fails = 0; setConn('on'); if (m.hosts) native('hosts:' + JSON.stringify(m.hosts)); send({ t: 'layout_get', id: 0 }); break;
+    case 'media': med = m.none ? m : { ...m, at: Date.now() }; lyricTick(); break;
+    case 'lyrics': lyr = { key: m.key, lines: m.lines || [] }; lyricTick(); break;
+    case 'auth_ok': fails = 0; setConn('on'); resetSubs(); if (m.hosts) native('hosts:' + JSON.stringify(m.hosts)); send({ t: 'layout_get', id: 0 }); break;
     case 'auth_fail': native('unpaired'); break;
     case 'status': status = m; refreshActive(); refreshWidgets(); refreshSliders(); break;
     case 'layout': setLayout(m.layout); break;
@@ -261,8 +397,8 @@ function connect() {
   clearTimeout(retry); setConn('mid');
   try { ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`); } catch (e) { return later(); }
   ws.onopen = () => ws.send(JSON.stringify({ t: 'auth', deviceId: DEV, token: TOK }));
-  ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (x) {} };
-  ws.onclose = () => { setConn('off'); later(); };
+  ws.onmessage = e => { if (typeof e.data !== 'string') { onFrame(e.data); return; } try { onMsg(JSON.parse(e.data)); } catch (x) {} };
+  ws.onclose = () => { setConn('off'); subMedia = false; subScreen = false; later(); };
   ws.onerror = () => {};
 }
 function later() { fails++; if (fails >= 6) { native('offline'); fails = 3; } retry = setTimeout(connect, 1500); }
