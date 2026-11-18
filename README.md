@@ -1,83 +1,64 @@
 # StreamDeck Mobile Controller
 
-An Android app (Flutter) that turns your phone into a customizable Stream Deck for a Windows 10/11 PC,
-plus a Windows companion (C# / .NET 8) that actually executes every action on the PC.
+Turn an Android phone into a full-screen, glowing Stream Deck for a Windows 10/11 PC.
+
+* **Phone (Android, Flutter):** shows *only the buttons*, full screen. Swipe for pages. No editing on the phone.
+* **PC (Windows, C# / .NET 8):** runs in the tray, executes every action, and hosts the **button editor** (opens in your browser).
+  The layout lives on the PC and is pushed to the phone live.
+* **Updates:** the host updates itself from GitHub Releases. The phone's deck UI is served by the PC, so it updates with the host —
+  **no APK reinstall** for UI/layout/action changes.
 
 ```
-mobile/                 Flutter Android app (UI, button editor, macros, profiles, connection)
-windows/StreamDeckHost/ Windows companion: tray app + dashboard + WebSocket server
-installer/              Inno Setup script for the Windows installer
+mobile/                 Android app: pairing + full-screen WebView + connection settings
+windows/StreamDeckHost/ Windows host: tray app, WebSocket server, editor (Web/editor.html), phone UI (Web/deck.html)
+installer/              Inno Setup script (per-user installer)
 tools/test-client.mjs   End-to-end protocol test (acts as a phone)
 docs/PROTOCOL.md        Wire protocol and action reference
-.github/workflows/      CI that builds the APK and the Windows installer
+.github/workflows/      CI: builds APK + Windows exe/installer, publishes a Release on tags
 ```
-
-## Status (honest)
-
-| Part | State |
-|---|---|
-| Windows host | Built and tested on Windows 11: pairing, auth, volume, mute, macros, screenshots, app scan (177 apps found on the dev PC), single-file exe smoke-tested. 18/18 protocol tests pass (`tools/test-client.mjs`). |
-| Android app | Complete source. Passes `dart analyze` (Flutter 3.27.4, one deprecation notice) and the 3 unit tests; manifest patching verified. **Never run on a phone/emulator and no APK built yet** (no Android SDK here), so UI behavior is unverified. |
-| Installer | Inno Setup script written but **not yet built** (Inno Setup not installed here). The portable zip is built. |
-| APK | Not built yet. Run `build-android.ps1` or push to GitHub (CI builds it). |
-
-Not verified on real hardware: brightness (needs a laptop panel or a DDC/CI monitor), microphone mute, USB tunnel, QR scanning, discovery across a real router.
-
-## Build
-
-### Windows host (needs .NET 8 SDK)
-```powershell
-./build-windows.ps1
-```
-Produces `dist/StreamDeckHost-portable-win-x64.zip` and, if Inno Setup 6 is installed (`winget install JRSoftware.InnoSetup`),
-`dist/StreamDeckHost-Setup-1.0.0.exe`. The installer adds a private-network firewall rule for TCP 47800 / UDP 47801 and an optional
-"start with Windows" entry.
-
-### Android app (needs Flutter 3.27+, Android SDK, JDK 17)
-```powershell
-./build-android.ps1
-```
-This runs `flutter create` once to generate the `android/` folder, adds the INTERNET/CAMERA permissions and cleartext-traffic flag
-to the manifest, then builds `dist/StreamDeck-Mobile.apk`. Use `-SetupOnly` to just prepare the project for Android Studio / `flutter run`.
-The APK is signed with the debug key (fine for sideloading; configure a keystore for Play Store releases).
-
-### No local toolchain? Use CI
-Push this folder to GitHub: `.github/workflows/build.yml` builds the APK and the installer and uploads both as artifacts.
 
 ## Using it
+1. Start **StreamDeck Host** on the PC. On first run it offers to allow phone connections through Windows Firewall
+   (one admin prompt). If you skipped it: Pairing tab → **Fix firewall**.
+2. Install the APK, open it, **Scan QR code** shown on the host's *Pairing* tab.
+3. Customize on the PC: host → **Open button editor** (or http://localhost:47800/editor on the PC). Drag to rearrange,
+   click a button to change label, icon (6000+ built-in, emoji, your own image or an app's real icon), colors, glow, action,
+   macro steps, confirmation. Changes autosave and appear on the phone immediately.
 
-1. Install and start **StreamDeck Host** on the PC (tray icon appears). Allow it on private networks.
-2. Install the APK on the phone. Open it → **Pair** → scan the QR code shown in the host's *Pairing* tab
-   (or *Enter manually* with the IP and the code shown there).
-3. Tap buttons. Tap **Edit** to change layout: tap a key to edit it, tap an empty slot to add one, long-press and drag to rearrange.
+### Connection
+* **Wi-Fi:** same network as the PC. The phone remembers addresses and re-discovers the PC by UDP broadcast if its IP changes.
+* **USB:** USB debugging on, cable in; the host runs `adb reverse` automatically (adb must be on PATH or in the Android SDK).
+* The deck reconnects automatically. If it can't connect, the phone shows the reason and a Try again / Pair again button.
 
-### Connections
-* **Wi-Fi**: phone and PC on the same network. The phone finds the PC by UDP broadcast (port 47801) and remembers its address.
-* **USB**: plug the phone in with USB debugging on. The host runs `adb reverse tcp:47800 tcp:47800` automatically
-  (needs `adb` on PATH or in the Android SDK; toggle in Settings). The app tries `127.0.0.1` first in *Auto* mode.
-* **Reconnect**: automatic, with backoff; also retried when the app returns to the foreground.
-* **Status sync**: the host pushes volume / mute / mic / brightness changes about once a second.
+**If it won't connect:** (1) host running? (tray icon) (2) host Pairing tab says *Firewall: phone connections allowed*? If not, press **Fix firewall**.
+(3) phone and PC on the same Wi-Fi, not a guest/AP-isolated network. (4) VPN off on either side.
 
-### What buttons can do
-Volume up/down/set, mute, microphone mute, media keys, brightness up/down/set, keyboard shortcuts (`ctrl+shift+esc`, `win+d`…),
-typing text, opening installed apps / Steam games / Store apps / paths / URLs, closing a process, lock / sleep / sign out /
-restart / shut down, screenshots (saved to `Pictures\StreamDeck Screenshots`), wallpaper (next / random / specific / folder,
-with upload from the phone), macros (ordered lists of any of these with delays), and optionally raw shell commands.
+## Updates
+* **Host:** on every start (and every 6 h) it checks the latest GitHub Release of `Devinhansaja/stream-desk`. If newer, it downloads
+  `StreamDeckHost.exe`, verifies the SHA-256 from `StreamDeckHost.exe.sha256`, swaps itself in and restarts. Turn off in host *Settings*.
+  Works when the exe is in a user-writable folder (portable or the per-user installer); in Program Files it only shows a notification.
+* **Phone:** `deck.html` comes from the PC, so deck UI changes arrive with the host update. Only changes to the native shell
+  (pairing screen, WebView, permissions) need a new APK.
+* **Publishing an update (you):** bump `<Version>` in `windows/StreamDeckHost/StreamDeckHost.csproj`, commit, then
+  `git tag v1.2.0 && git push origin v1.2.0`. GitHub Actions builds and attaches `StreamDeckHost.exe`, its `.sha256`, the installer and the APK.
+  The host trusts whatever is in your repo's latest release, so keep the repo's access secure.
 
-Buttons are data: label, icon (built-in, emoji/text, or your own image; apps use their real icon), two gradient colors, glow,
-confirmation prompt, and an action `{type, params}`. Nothing is hard-coded: the first-run layout is just a default profile you can edit or delete.
+## Build
+```powershell
+./build-windows.ps1     # needs .NET 8 SDK → dist\StreamDeckHost.exe(+.sha256), portable zip, installer if Inno Setup is installed
+./build-android.ps1     # needs Flutter 3.27+, Android SDK, JDK 17 → dist\StreamDeck-Mobile.apk
+```
+APK is debug-signed (fine for sideloading). Without local tools, push a tag and let CI build.
 
-## Security model
-* Pairing: the QR contains a random 128-bit secret, valid for 10 minutes and **single use**. Pairing yields a 256-bit device token;
-  the PC stores only its SHA-256 hash. Revoke devices in the host's *Devices* tab.
-* Unauthenticated connections can do nothing and are dropped after 15 s; 5 bad attempts from an IP lock it out for a minute.
-* Raw shell commands are **off** by default (Settings in the host).
-* **Limitation:** traffic is plain `ws://` on your LAN (no TLS), so use it on networks you trust, or use USB. Anyone on the same
-  network who can sniff traffic could capture the token.
-* Input injection cannot reach elevated (admin) windows, and Windows may ask for permission on first firewall use.
+## Security
+* QR contains a random 128-bit secret: single use, expires in 10 minutes. Pairing yields a 256-bit token; the PC stores only its hash.
+  Revoke phones in host → Devices.
+* Unauthenticated sockets can do nothing; 5 bad attempts lock an IP for a minute.
+* The editor and its API answer only to `localhost` on the PC (loopback + Host check + custom header + same-origin), not to the LAN.
+* Raw shell commands are **off** by default (host → Settings).
+* **Limit:** traffic is plain `ws://` / `http://` on your LAN (no TLS). Use trusted networks or USB.
 
-## Known limits
-* Brightness works on laptop panels (WMI) and DDC/CI monitors; many desktop monitors don't expose it. The app shows "n/a".
-* `sleep` may hibernate if hibernation is enabled (Windows behavior).
-* Phone-side profiles are stored on the phone only; there is no cloud sync or import/export yet.
-* Android only; no iOS by design.
+## Not verified on real hardware
+Everything below the PC is tested (29 protocol checks incl. layout sync and editor access rules; auto-update swap tested with a
+fake newer build). **The APK has not been run on a phone by me**: QR scan, WebView rendering, USB tunnel, haptics, brightness on your
+display, mic mute and the installer are untested.

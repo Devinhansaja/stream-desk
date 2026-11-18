@@ -29,6 +29,8 @@ public sealed class HostServer : IDisposable
 
     readonly SettingsStore store;
     readonly ActionExecutor exec;
+    readonly LayoutStore layout;
+    public ActionExecutor Exec => exec;
     readonly ConcurrentDictionary<Guid, Client> clients = new();
     readonly ConcurrentDictionary<string, (int fails, DateTime until)> failures = new();
     readonly CancellationTokenSource cts = new();
@@ -49,10 +51,12 @@ public sealed class HostServer : IDisposable
     public IReadOnlyList<string> ConnectedDeviceIds => clients.Values.Where(c => c.Device != null).Select(c => c.Device!.Id).ToList();
     public string? DevPairingFile { get; set; }
 
-    public HostServer(SettingsStore store)
+    public HostServer(SettingsStore store, LayoutStore layout)
     {
         this.store = store;
+        this.layout = layout;
         exec = new ActionExecutor(store);
+        layout.Changed += () => _ = BroadcastLayout();
     }
 
     static string NewSecret() => Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
@@ -99,13 +103,20 @@ public sealed class HostServer : IDisposable
             {
                 if (ni.OperationalStatus != OperationalStatus.Up) continue;
                 if (ni.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel) continue;
+                var desc = ni.Description + " " + ni.Name;
+                if (System.Text.RegularExpressions.Regex.IsMatch(desc, "virtual|vmware|vbox|hyper-v|vethernet|wsl|docker|tap-|vpn|bluetooth", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) continue;
                 foreach (var ua in ni.GetIPProperties().UnicastAddresses)
-                    if (ua.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ua.Address))
-                        result.Add(ua.Address.ToString());
+                {
+                    if (ua.Address.AddressFamily != AddressFamily.InterNetwork || IPAddress.IsLoopback(ua.Address)) continue;
+                    var s = ua.Address.ToString();
+                    if (s.StartsWith("169.254.")) continue; // link-local, not routable
+                    result.Add(s);
+                }
             }
         }
         catch { }
-        return result;
+        // Typical home-LAN ranges first.
+        return result.OrderBy(a => a.StartsWith("192.168.") ? 0 : a.StartsWith("10.") ? 1 : a.StartsWith("172.") ? 2 : 3).ToList();
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -116,7 +127,7 @@ public sealed class HostServer : IDisposable
         b.WebHost.ConfigureKestrel(o => o.ListenAnyIP(Port));
         app = b.Build();
         app.UseWebSockets(new Microsoft.AspNetCore.Builder.WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15) });
-        app.MapGet("/", () => "StreamDeck Host is running.");
+        WebEndpoints.Map(app, this, store, layout);
         app.Map("/ws", (Microsoft.AspNetCore.Http.HttpContext ctx) => HandleSocket(ctx));
         await app.StartAsync();
         L($"Listening on port {Port}");
@@ -296,6 +307,10 @@ public sealed class HostServer : IDisposable
                 break;
             }
 
+            case "layout_get":
+                await Send(c, new JsonObject { ["t"] = "layout", ["id"] = id, ["layout"] = layout.Snapshot() });
+                break;
+
             case "wallpapers":
             {
                 _ = Task.Run(async () =>
@@ -430,6 +445,13 @@ public sealed class HostServer : IDisposable
             catch (OperationCanceledException) { break; }
             catch { }
         }
+    }
+
+    async Task BroadcastLayout()
+    {
+        foreach (var c in clients.Values.Where(x => x.Device != null))
+            await Send(c, new JsonObject { ["t"] = "layout", ["layout"] = layout.Snapshot() });
+        L("Layout updated and sent to phones");
     }
 
     public void Disconnect(string deviceId)

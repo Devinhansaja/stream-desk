@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../connection.dart';
-import '../scope.dart';
+import '../store.dart';
 import '../widgets.dart';
 
 /// Pair with a PC: scan the QR shown in StreamDeck Host, or enter IP + code manually.
 class PairScreen extends StatefulWidget {
-  const PairScreen({super.key});
+  const PairScreen({super.key, required this.app});
+  final AppState app;
   @override
   State<PairScreen> createState() => _PairScreenState();
 }
@@ -36,11 +37,10 @@ class _PairScreenState extends State<PairScreen> {
       _busy = true;
       _error = null;
     });
-    final err = await AppScope.of(context).conn.pair(qr);
+    final err = await HostLink.pair(qr, widget.app);
     if (!mounted) return;
     if (err == null) {
-      toast(context, 'Paired with ${qr.name}');
-      Navigator.pop(context);
+      Navigator.pop(context, true);
     } else {
       setState(() {
         _busy = false;
@@ -78,7 +78,11 @@ class _PairScreenState extends State<PairScreen> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: Stack(fit: StackFit.expand, children: [
-                  MobileScanner(controller: _scanner, onDetect: _onDetect, errorBuilder: (ctx, err, _) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('Camera unavailable: ${err.errorCode.name}\nUse "Enter manually" instead.', textAlign: TextAlign.center)))),
+                  MobileScanner(
+                    controller: _scanner,
+                    onDetect: _onDetect,
+                    errorBuilder: (ctx, err, _) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('Camera unavailable: ${err.errorCode.name}\nUse "Enter manually" instead.', textAlign: TextAlign.center))),
+                  ),
                   IgnorePointer(child: Center(child: Container(width: 230, height: 230, decoration: BoxDecoration(border: Border.all(color: Neon.purple, width: 3), borderRadius: BorderRadius.circular(20))))),
                   if (_busy) Container(color: Colors.black54, child: const Center(child: CircularProgressIndicator())),
                 ]),
@@ -96,15 +100,18 @@ class _PairScreenState extends State<PairScreen> {
                 TextField(controller: _code, decoration: const InputDecoration(labelText: 'Pairing code (shown on PC)')),
                 const SizedBox(height: 16),
                 FilledButton(
-                  onPressed: _busy
-                      ? null
-                      : () => _doPair(PairQr('PC', int.tryParse(_port.text) ?? 47800, [_ip.text.trim()], _code.text.trim())),
+                  onPressed: _busy ? null : () => _doPair(PairQr('PC', int.tryParse(_port.text) ?? 47800, [_ip.text.trim()], _code.text.trim())),
                   child: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Pair'),
                 ),
               ]),
             ),
           if (_error != null)
-            Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.redAccent))),
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: const Color(0x33FF1744), borderRadius: BorderRadius.circular(12)),
+              child: Text(_error!, style: const TextStyle(color: Color(0xFFFF8A9A))),
+            ),
         ]),
       ),
     );

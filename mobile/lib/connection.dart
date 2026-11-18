@@ -1,29 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/io.dart';
 
-import 'models.dart';
 import 'store.dart';
-
-enum LinkState { disconnected, connecting, connected }
-
-class ActionResult {
-  final bool ok;
-  final String? error;
-  final String? message;
-  const ActionResult(this.ok, {this.error, this.message});
-}
-
-class DiscoveredPc {
-  final String ip;
-  final String name;
-  final int port;
-  const DiscoveredPc(this.ip, this.name, this.port);
-}
 
 class PairQr {
   final String name;
@@ -47,78 +28,47 @@ class PairQr {
   }
 }
 
-/// Owns the single WebSocket to the PC: USB/Wi-Fi/discovery, pairing, auth, automatic reconnection,
-/// request/response matching and the live PC status.
-class ConnectionManager extends ChangeNotifier {
-  ConnectionManager(this.app);
-  final AppState app;
+class DiscoveredPc {
+  final String ip;
+  final String name;
+  final int port;
+  const DiscoveredPc(this.ip, this.name, this.port);
+}
 
+/// Finding and pairing with the PC. The deck itself runs inside a WebView served by the PC.
+class HostLink {
   static const discoveryPort = 47801;
 
-  LinkState state = LinkState.disconnected;
-  String? hostName;
-  String? lastError;
-  String? connectedVia; // host/ip in use ("127.0.0.1" == USB)
-  PcStatus status = const PcStatus();
-  bool needsRepair = false;
-
-  IOWebSocketChannel? _ch;
-  bool _running = false;
-  bool _busy = false; // pairing in progress: pause the reconnect loop
-  int _nextId = 1;
-  final Map<int, Completer<Map<String, dynamic>>> _pending = {};
-
-  bool get isUsb => connectedVia == '127.0.0.1';
-  bool get connected => state == LinkState.connected;
-
-  // ------------------------------------------------------------ lifecycle
-  void start() {
-    if (_running) return;
-    _running = true;
-    _loop();
-  }
-
-  void stop() {
-    _running = false;
-    _drop();
-  }
-
-  /// Call when the app returns to foreground so we reconnect immediately.
-  void nudge() {
-    if (!connected) _wake?.complete();
-  }
-
-  Completer<void>? _wake;
-
-  Future<void> _sleep(Duration d) async {
-    _wake = Completer<void>();
-    await Future.any([Future.delayed(d), _wake!.future]);
-    _wake = null;
-  }
-
-  Future<void> _loop() async {
-    var attempt = 0;
-    while (_running) {
-      if (!connected && !_busy && app.activePc != null && !needsRepair) {
-        state = LinkState.connecting;
-        notifyListeners();
-        final ok = await _connectToActive();
-        if (ok) {
-          attempt = 0;
-        } else {
-          attempt++;
-          if (!connected) {
-            state = LinkState.disconnected;
-            notifyListeners();
-          }
-        }
-      }
-      await _sleep(Duration(seconds: connected ? 3 : min(1 + attempt, 6)));
+  /// True when a StreamDeck Host answers on [host]:[port].
+  static Future<bool> probe(String host, int port) async {
+    final c = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+    try {
+      final req = await c.getUrl(Uri.parse('http://$host:$port/')).timeout(const Duration(seconds: 3));
+      final resp = await req.close().timeout(const Duration(seconds: 3));
+      final body = await resp.transform(utf8.decoder).join().timeout(const Duration(seconds: 3));
+      return body.contains('StreamDeck Host');
+    } catch (_) {
+      return false;
+    } finally {
+      c.close(force: true);
     }
   }
 
-  // ------------------------------------------------------------ discovery
-  Future<List<DiscoveredPc>> discover({Duration wait = const Duration(milliseconds: 1500)}) async {
+  /// First host (from [hosts]) that answers; probes all in parallel.
+  static Future<String?> firstReachable(List<String> hosts, int port) async {
+    if (hosts.isEmpty) return null;
+    final done = Completer<String?>();
+    var pending = hosts.length;
+    for (final h in hosts) {
+      probe(h, port).then((ok) {
+        if (ok && !done.isCompleted) done.complete(h);
+        if (--pending == 0 && !done.isCompleted) done.complete(null);
+      });
+    }
+    return done.future;
+  }
+
+  static Future<List<DiscoveredPc>> discover({Duration wait = const Duration(milliseconds: 1500)}) async {
     final found = <String, DiscoveredPc>{};
     RawDatagramSocket? sock;
     try {
@@ -131,8 +81,7 @@ class ConnectionManager extends ChangeNotifier {
           try {
             final j = jsonDecode(utf8.decode(d.data)) as Map<String, dynamic>;
             if (j['app'] == 'streamdeck-host') {
-              found[d.address.address] =
-                  DiscoveredPc(d.address.address, (j['name'] ?? 'PC') as String, (j['port'] ?? 47800) as int);
+              found[d.address.address] = DiscoveredPc(d.address.address, (j['name'] ?? 'PC') as String, (j['port'] ?? 47800) as int);
             }
           } catch (_) {}
         }
@@ -142,251 +91,81 @@ class ConnectionManager extends ChangeNotifier {
       await Future.delayed(const Duration(milliseconds: 250));
       sock.send(msg, InternetAddress('255.255.255.255'), discoveryPort);
       await Future.delayed(wait);
-    } catch (e) {
-      debugPrint('discovery failed: $e');
+    } catch (_) {
     } finally {
       sock?.close();
     }
     return found.values.toList();
   }
 
-  // ------------------------------------------------------------ connect
-  Future<bool> _connectToActive() async {
-    final pc = app.activePc!;
-    final mode = app.linkMode;
+  /// Returns the reachable host for [pc] (USB tunnel first, then known addresses, then network discovery).
+  static Future<String?> resolve(PairedPc pc, LinkMode mode) async {
     final order = <String>[];
     void add(String? h) {
       if (h != null && h.isNotEmpty && !order.contains(h)) order.add(h);
     }
 
-    if (mode != LinkMode.wifi) add('127.0.0.1'); // USB (adb reverse) is fastest and preferred
+    if (mode != LinkMode.wifi) add('127.0.0.1');
     if (mode != LinkMode.usb) {
       add(pc.lastHost);
       pc.hosts.forEach(add);
     }
-
-    for (final h in order) {
-      if (await _tryAuth(pc, h)) return true;
-      if (needsRepair) return false;
-    }
-    if (mode != LinkMode.usb) {
+    var host = await firstReachable(order, pc.port);
+    if (host == null && mode != LinkMode.usb) {
       final found = await discover();
-      for (final d in found) {
-        if (d.name == pc.name || found.length == 1) {
-          if (!pc.hosts.contains(d.ip)) pc.hosts.add(d.ip);
-          if (await _tryAuth(pc, d.ip, port: d.port)) {
-            app.changed();
-            return true;
-          }
-        }
-      }
+      final match = found.where((d) => d.name == pc.name).toList();
+      final cands = (match.isNotEmpty ? match : found).map((d) => d.ip).toList();
+      host = await firstReachable(cands, pc.port);
+      if (host != null && !pc.hosts.contains(host)) pc.hosts.add(host);
     }
-    return false;
+    return host;
   }
 
-  Future<bool> _tryAuth(PairedPc pc, String host, {int? port}) async {
-    final r = await _handshake(host, port ?? pc.port, {'t': 'auth', 'deviceId': pc.deviceId, 'token': pc.token});
-    if (r == null) return false;
-    if (r['t'] == 'auth_ok') {
-      hostName = (r['host'] ?? pc.name) as String;
-      pc.lastHost = host;
-      connectedVia = host;
-      lastError = null;
-      state = LinkState.connected;
-      app.save();
-      notifyListeners();
-      return true;
+  /// Pairs using the scanned QR payload. Returns null on success, otherwise a human-readable reason.
+  static Future<String?> pair(PairQr qr, AppState app) async {
+    final hosts = <String>[...qr.hosts, '127.0.0.1'];
+    final host = await firstReachable(hosts, qr.port);
+    if (host == null) {
+      return 'Could not reach your PC at ${qr.hosts.isEmpty ? "(no address in QR)" : qr.hosts.join(", ")}.\n\n'
+          '• Phone and PC must be on the same Wi-Fi (not a guest network).\n'
+          '• In StreamDeck Host on the PC press "Fix firewall".\n'
+          '• Or plug in USB with USB debugging on and use the manual option with 127.0.0.1.';
     }
-    if (r['t'] == 'auth_fail') {
-      needsRepair = true;
-      lastError = 'This PC no longer recognises this phone. Pair again.';
-      _drop();
-      notifyListeners();
-    }
-    return false;
-  }
-
-  /// Opens a socket, sends [hello] and returns the first handshake reply, leaving the socket open on success.
-  Future<Map<String, dynamic>?> _handshake(String host, int port, Map<String, dynamic> hello) async {
     IOWebSocketChannel? ch;
     try {
-      ch = IOWebSocketChannel.connect(
-        Uri.parse('ws://$host:$port/ws'),
-        connectTimeout: const Duration(seconds: 3),
-        pingInterval: const Duration(seconds: 10),
-      );
+      ch = IOWebSocketChannel.connect(Uri.parse('ws://$host:${qr.port}/ws'), connectTimeout: const Duration(seconds: 4));
       final c = ch;
-      await c.ready.timeout(const Duration(seconds: 4));
-      final first = Completer<Map<String, dynamic>>();
-      c.stream.listen(
-        (data) {
-          try {
-            final m = jsonDecode(data as String) as Map<String, dynamic>;
-            final t = m['t'];
-            if (!first.isCompleted && (t == 'auth_ok' || t == 'auth_fail' || t == 'paired' || t == 'pair_fail')) {
-              first.complete(m);
-            } else {
-              _onMessage(m);
-            }
-          } catch (_) {}
-        },
-        onError: (Object e) {
-          if (!first.isCompleted) first.completeError(e);
-        },
-        onDone: () {
-          if (!first.isCompleted) first.completeError('closed');
-          if (identical(_ch, c)) _onDisconnected();
-        },
-        cancelOnError: true,
-      );
-      c.sink.add(jsonEncode(hello));
-      final reply = await first.future.timeout(const Duration(seconds: 5));
-      final ok = reply['t'] == 'auth_ok' || reply['t'] == 'paired';
-      if (ok) {
-        _drop(); // replace any previous socket
-        _ch = c;
-      } else {
-        await c.sink.close();
-      }
-      return reply;
-    } catch (_) {
-      try {
-        await ch?.sink.close();
-      } catch (_) {}
-      return null;
-    }
-  }
-
-  void _drop() {
-    final c = _ch;
-    _ch = null;
-    try {
-      c?.sink.close();
-    } catch (_) {}
-    for (final p in _pending.values) {
-      if (!p.isCompleted) p.completeError('disconnected');
-    }
-    _pending.clear();
-  }
-
-  void _onDisconnected() {
-    _ch = null;
-    state = LinkState.disconnected;
-    connectedVia = null;
-    for (final p in _pending.values) {
-      if (!p.isCompleted) p.completeError('disconnected');
-    }
-    _pending.clear();
-    notifyListeners();
-    nudge();
-  }
-
-  // ------------------------------------------------------------ pairing
-  /// Pairs using a scanned QR (or manual) payload. Returns an error message, or null on success.
-  Future<String?> pair(PairQr qr) async {
-    _busy = true;
-    needsRepair = false;
-    try {
-      final hosts = <String>[...qr.hosts, '127.0.0.1'];
-      String? err;
-      for (final h in hosts) {
-        final r = await _handshake(h, qr.port, {
-          't': 'pair',
-          'secret': qr.secret,
-          'deviceId': app.deviceId,
-          'deviceName': app.deviceName,
-        });
-        if (r == null) continue;
-        if (r['t'] == 'paired') {
-          final pc = PairedPc(
-            name: (r['host'] ?? qr.name) as String,
+      await c.ready.timeout(const Duration(seconds: 5));
+      c.sink.add(jsonEncode({'t': 'pair', 'secret': qr.secret, 'deviceId': app.deviceId, 'deviceName': app.deviceName}));
+      await for (final data in c.stream.timeout(const Duration(seconds: 8))) {
+        final m = jsonDecode(data as String) as Map<String, dynamic>;
+        if (m['t'] == 'paired') {
+          final hostName = (m['host'] ?? qr.name) as String;
+          app.addPc(PairedPc(
+            name: hostName,
             hosts: qr.hosts,
             port: qr.port,
             deviceId: app.deviceId,
-            token: r['token'] as String,
-            lastHost: h,
-          );
-          app.addPc(pc);
-          hostName = pc.name;
-          connectedVia = h;
-          state = LinkState.connected;
-          lastError = null;
-          notifyListeners();
+            token: m['token'] as String,
+            lastHost: host,
+          ));
+          await c.sink.close();
           return null;
         }
-        err = (r['error'] ?? 'Pairing rejected') as String;
-        break;
+        if (m['t'] == 'pair_fail') {
+          await c.sink.close();
+          return '${m['error'] ?? 'Pairing rejected'}. Press "New pairing code" on the PC and scan again.';
+        }
       }
-      return err ?? 'Could not reach the PC. Same Wi-Fi? Is StreamDeck Host running?';
+      return 'The PC closed the connection.';
+    } on TimeoutException {
+      return 'The PC did not answer in time.';
+    } catch (e) {
+      return 'Connection error: $e';
     } finally {
-      _busy = false;
-      nudge();
-    }
-  }
-
-  // ------------------------------------------------------------ messages
-  void _onMessage(Map<String, dynamic> m) {
-    final id = m['id'];
-    if (id is int && _pending.containsKey(id)) {
-      _pending.remove(id)!.complete(m);
-      return;
-    }
-    if (m['t'] == 'status') {
-      status = PcStatus.fromJson(m);
-      notifyListeners();
-    }
-  }
-
-  Future<Map<String, dynamic>> request(Map<String, dynamic> msg, {Duration timeout = const Duration(seconds: 15)}) {
-    final ch = _ch;
-    if (ch == null || !connected) return Future.error('Not connected to a PC');
-    final id = _nextId++;
-    final c = Completer<Map<String, dynamic>>();
-    _pending[id] = c;
-    ch.sink.add(jsonEncode({...msg, 'id': id}));
-    return c.future.timeout(timeout, onTimeout: () {
-      _pending.remove(id);
-      throw 'The PC did not answer in time';
-    });
-  }
-
-  Future<ActionResult> run(ActionSpec action) async {
-    try {
-      final r = await request({'t': 'action', 'action': action.wire(app.macros)},
-          timeout: const Duration(minutes: 2));
-      if (r['ok'] == true) return ActionResult(true, message: r['message'] as String?);
-      return ActionResult(false, error: (r['error'] ?? 'Failed') as String);
-    } catch (e) {
-      return ActionResult(false, error: e.toString());
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> apps({bool refresh = false}) async {
-    final r = await request({'t': 'apps', 'refresh': refresh}, timeout: const Duration(seconds: 60));
-    return List<Map<String, dynamic>>.from((r['apps'] ?? []) as List);
-  }
-
-  Future<List<Map<String, dynamic>>> wallpapers() async {
-    final r = await request({'t': 'wallpapers'}, timeout: const Duration(seconds: 30));
-    return List<Map<String, dynamic>>.from((r['items'] ?? []) as List);
-  }
-
-  Future<ActionResult> uploadWallpaper(String name, List<int> bytes, {bool apply = true}) async {
-    try {
-      final r = await request({'t': 'wallpaper_upload', 'name': name, 'data': base64Encode(bytes), 'apply': apply},
-          timeout: const Duration(minutes: 2));
-      return r['ok'] == true ? const ActionResult(true) : ActionResult(false, error: (r['error'] ?? 'Upload failed') as String);
-    } catch (e) {
-      return ActionResult(false, error: e.toString());
-    }
-  }
-
-  Future<bool> deleteWallpaper(String name) async {
-    try {
-      final r = await request({'t': 'wallpaper_delete', 'name': name});
-      return r['ok'] == true;
-    } catch (_) {
-      return false;
+      try {
+        await ch?.sink.close();
+      } catch (_) {}
     }
   }
 }

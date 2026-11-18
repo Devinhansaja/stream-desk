@@ -119,7 +119,27 @@ console.log('   sample:', m.apps.slice(0, 5).map(a => `${a.name} [${a.kind}]`).j
 m = await rpc(ws, { t: 'wallpapers' }, 'wallpapers');
 check('wallpaper list', Array.isArray(m.items));
 
+
+// 7. layout lives on the PC; editor API is PC-only; phones get live pushes
+const base = `http://127.0.0.1:${port}`;
+m = await rpc(ws, { t: 'layout_get' }, 'layout');
+check('layout_get returns default layout', m.layout.profiles[0].pages[0].slots.filter(Boolean).length >= 10);
+const lan = (await import('node:os')).networkInterfaces();
+const lanIp = Object.values(lan).flat().find(i => i.family === 'IPv4' && !i.internal)?.address;
+let r = await fetch(`${base}/deck`); check('/deck served to anyone', r.status === 200 && (await r.text()).includes('StreamDeck'));
+r = await fetch(`${base}/editor`); check('/editor served on localhost', r.status === 200);
+if (lanIp) { r = await fetch(`http://${lanIp}:${port}/editor`); check('/editor refused over LAN address', r.status === 403, `status ${r.status}`); r = await fetch(`http://${lanIp}:${port}/api/layout`); check('/api/layout refused over LAN address', r.status === 403); }
+const lay = m.layout; lay.profiles[0].pages[0].slots[15] = { id: 'x1', label: 'Test key', icon: 'bolt', image: null, color1: '#ffffff', color2: '#000000', glow: 0.5, confirm: false, action: { type: 'lock' } };
+r = await fetch(`${base}/api/layout`, { method: 'PUT', body: JSON.stringify(lay), headers: { 'Content-Type': 'application/json' } }); check('PUT layout without editor header refused', r.status === 403);
+r = await fetch(`${base}/api/layout`, { method: 'PUT', body: JSON.stringify(lay), headers: { 'Content-Type': 'application/json', 'X-SD-Editor': '1', Origin: 'http://evil.example' } }); check('PUT layout from foreign origin refused', r.status === 403);
+const pushed = wait(ws, x => x.t === 'layout' && !x.id);
+r = await fetch(`${base}/api/layout`, { method: 'PUT', body: JSON.stringify(lay), headers: { 'Content-Type': 'application/json', 'X-SD-Editor': '1' } }); check('PUT layout from editor ok', r.status === 200);
+m = await pushed; check('phone receives live layout push', m.layout.profiles[0].pages[0].slots[15]?.label === 'Test key');
+const bad = JSON.parse(JSON.stringify(lay)); bad.profiles[0].pages[0].slots.pop();
+r = await fetch(`${base}/api/layout`, { method: 'PUT', body: JSON.stringify(bad), headers: { 'Content-Type': 'application/json', 'X-SD-Editor': '1' } }); check('invalid layout rejected', r.status === 400);
+r = await fetch(`${base}/assets/icons.json`); check('icon map served', (await r.json()).volume_up > 0);
 ws.close();
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
+
 

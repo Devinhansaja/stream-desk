@@ -1,4 +1,5 @@
-﻿using System.Drawing.Drawing2D;
+using System.Diagnostics;
+using System.Drawing.Drawing2D;
 using QRCoder;
 using StreamDeckHost.Core;
 
@@ -31,10 +32,16 @@ public sealed class MainForm : Form
     readonly System.Windows.Forms.Timer refresh = new() { Interval = 1000 };
     readonly bool startHidden;
     bool reallyExit;
+    readonly bool noUpdate;
+    readonly Label fwLabel = new();
+    readonly Label updLabel = new();
+    ToolStripMenuItem? updateMenuItem;
+    UpdateInfo? pendingUpdate;
     string shownPayload = "";
 
-    public MainForm(SettingsStore store, HostServer server, bool startHidden)
+    public MainForm(SettingsStore store, HostServer server, bool startHidden, bool noUpdate = false)
     {
+        this.noUpdate = noUpdate;
         this.store = store;
         this.server = server;
         this.startHidden = startHidden;
@@ -59,6 +66,7 @@ public sealed class MainForm : Form
         ShowPage("Pairing");
 
         if (store.Data.AutoUsb) StartUsbLoop();
+        HandleCreated += (_, _) => _ = Task.Run(StartupTasksAsync);
     }
 
     protected override void SetVisibleCore(bool value)
@@ -137,7 +145,10 @@ public sealed class MainForm : Form
         addrLabel.Location = new Point(310, 80); addrLabel.AutoSize = true; addrLabel.ForeColor = Fg;
         p.Controls.Add(addrLabel);
         p.Controls.Add(Btn("New pairing code", 310, 300, 170, Purple, (_, _) => { server.RotateSecret(); RefreshAll(); }));
-        p.Controls.Add(H("The code is single-use and expires after 10 minutes. Phones and PC must be on the same Wi-Fi,\nor connected with a USB cable (enable USB debugging; see Settings).", 0, 372, 9.5f, Muted));
+        p.Controls.Add(Btn("Open button editor", 490, 300, 190, Blue, (_, _) => OpenEditor()));
+        fwLabel.Location = new Point(310, 348); fwLabel.AutoSize = true; p.Controls.Add(fwLabel);
+        p.Controls.Add(Btn("Fix firewall", 310, 374, 170, Panel2, (_, _) => FixFirewall(true)));
+        p.Controls.Add(H("The code is single-use and expires after 10 minutes. Phones and PC must be on the same Wi-Fi,\nor connected with a USB cable (enable USB debugging; see Settings).", 0, 420, 9.5f, Muted));
         return p;
     }
 
@@ -200,6 +211,10 @@ public sealed class MainForm : Form
             usbOut.Text = o;
         }));
         p.Controls.Add(usbOut);
+        p.Controls.Add(Chk("Install updates from GitHub automatically", 270, store.Data.AutoUpdate, v => store.Data.AutoUpdate = v));
+        updLabel.Location = new Point(0, 340); updLabel.AutoSize = true; updLabel.ForeColor = Muted; updLabel.Text = "Version " + Updater.Current.ToString(3);
+        p.Controls.Add(updLabel);
+        p.Controls.Add(Btn("Check for updates now", 0, 300, 190, Blue, async (_, _) => await CheckUpdatesAsync(true)));
         p.Controls.Add(Btn("Open data folder", 190, 206, 170, Panel2, (_, _) =>
             System.Diagnostics.Process.Start("explorer.exe", AppPaths.Root)));
         return p;
@@ -211,6 +226,9 @@ public sealed class MainForm : Form
         var menu = new ContextMenuStrip();
         menu.Items.Add("Open dashboard", null, (_, _) => ShowWindow("Devices"));
         menu.Items.Add("Pair new device", null, (_, _) => { server.RotateSecret(); ShowWindow("Pairing"); });
+        menu.Items.Add("Open button editor", null, (_, _) => OpenEditor());
+        updateMenuItem = new ToolStripMenuItem("Install update and restart", null, (_, _) => ApplyUpdateNow()) { Visible = false };
+        menu.Items.Add(updateMenuItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Quit StreamDeck Host", null, (_, _) => { reallyExit = true; tray.Visible = false; Close(); });
         tray.ContextMenuStrip = menu;
@@ -310,6 +328,99 @@ public sealed class MainForm : Form
         });
     }
     bool usbLoopRunning;
+
+    // ------------------------------------------------------------ editor / firewall / updates
+    void OpenEditor()
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo($"http://localhost:{server.Port}/editor") { UseShellExecute = true }); }
+        catch (Exception e) { MessageBox.Show("Could not open the browser: " + e.Message); }
+    }
+
+    void UpdateFirewallLabel()
+    {
+        bool ok = Firewall.RuleExists(server.Port);
+        fwLabel.Text = ok ? "Firewall: phone connections allowed" : "Firewall: NOT allowed - the phone cannot connect until fixed";
+        fwLabel.ForeColor = ok ? Green : Color.Salmon;
+    }
+
+    void FixFirewall(bool explicitClick)
+    {
+        bool ok = Firewall.AddRulesElevated(server.Port);
+        UpdateFirewallLabel();
+        if (explicitClick)
+            MessageBox.Show(ok ? "Done. Your phone can now reach this PC." : "The firewall rule was not added (administrator permission is needed).",
+                "StreamDeck Host");
+    }
+
+    async Task StartupTasksAsync()
+    {
+        BeginInvokeSafe(UpdateFirewallLabel);
+        if (!Firewall.RuleExists(server.Port) && !store.Data.FirewallAsked)
+        {
+            store.Data.FirewallAsked = true;
+            store.Save();
+            BeginInvokeSafe(() =>
+            {
+                var r = MessageBox.Show(
+                    "Windows Firewall will block your phone from reaching this PC unless you allow it.\n\nAllow phone connections now? (Windows will ask for administrator permission.)",
+                    "StreamDeck Host", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (r == DialogResult.Yes) FixFirewall(false);
+            });
+        }
+        if (noUpdate) return;
+        await Task.Delay(4000);
+        while (!reallyExit)
+        {
+            if (store.Data.AutoUpdate) await CheckUpdatesAsync(false);
+            await Task.Delay(TimeSpan.FromHours(6));
+        }
+    }
+
+    async Task CheckUpdatesAsync(bool explicitClick)
+    {
+        try
+        {
+            var u = await Updater.CheckAsync();
+            if (u == null)
+            {
+                if (explicitClick) BeginInvokeSafe(() => MessageBox.Show("You are on the latest version (" + Updater.Current.ToString(3) + ").", "StreamDeck Host"));
+                return;
+            }
+            AppendLog($"Update {u.Version.ToString(3)} found, downloading...");
+            if (!Updater.CanWriteHere())
+            {
+                BeginInvokeSafe(() =>
+                {
+                    tray.ShowBalloonTip(5000, "StreamDeck Host", $"Version {u.Version.ToString(3)} is available. Download it from GitHub.", ToolTipIcon.Info);
+                    if (explicitClick) System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(u.PageUrl) { UseShellExecute = true });
+                });
+                return;
+            }
+            await Updater.DownloadAsync(u);
+            pendingUpdate = u;
+            BeginInvokeSafe(() =>
+            {
+                if (updateMenuItem != null) updateMenuItem.Visible = true;
+                updLabel.Text = $"Version {Updater.Current.ToString(3)}  -  update {u.Version.ToString(3)} ready";
+                // Silent on start-up: install right away. Otherwise wait for the user.
+                tray.ShowBalloonTip(4000, "StreamDeck Host", $"Updating to {u.Version.ToString(3)}...", ToolTipIcon.Info);
+            });
+            await Task.Delay(1500);
+            if (!explicitClick && DateTime.Now - Process.GetCurrentProcess().StartTime < TimeSpan.FromMinutes(5))
+                BeginInvokeSafe(ApplyUpdateNow);
+        }
+        catch (Exception e) { AppendLog("Update check failed: " + e.Message); }
+    }
+
+    void ApplyUpdateNow()
+    {
+        if (!Updater.HasStaged()) return;
+        reallyExit = true;
+        tray.Visible = false;
+        server.Dispose();
+        if (Updater.ApplyStagedAndRestart()) { Application.Exit(); Environment.Exit(0); }
+        reallyExit = false;
+    }
 
     // ------------------------------------------------------------ icon
     static Icon MakeIcon()

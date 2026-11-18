@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StreamDeck Editor</title>
+<style>
+  @font-face { font-family: MI; src: url(/assets/MaterialIcons.otf); }
+  :root { --bg:#05050f; --panel:#0e0e24; --panel2:#16163a; --purple:#7c4dff; --blue:#1e90ff; --green:#22e58b; --muted:#9696bd; --text:#ededfb; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--bg); color:var(--text); font:14px system-ui,'Segoe UI',sans-serif; height:100%; }
+  body { display:flex; flex-direction:column; background:radial-gradient(circle at 20% -10%, #1b1050 0, transparent 45%), var(--bg); }
+  header { display:flex; align-items:center; gap:16px; padding:12px 20px; border-bottom:2px solid #7c4dff55; background:#0b0b20; }
+  .logo { width:38px; height:38px; border-radius:11px; background:linear-gradient(135deg,var(--purple),var(--blue)); display:grid; place-items:center; font:24px MI; }
+  header h1 { margin:0; font-size:19px; } header small { color:var(--purple); display:block; font-size:12px; }
+  .sp { flex:1; }
+  #saved { color:var(--muted); font-size:13px; } #saved.ok { color:var(--green); } #saved.err { color:#ff6b81; }
+  main { flex:1; min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 400px; gap:16px; padding:16px 20px; }
+  .box { background:var(--panel); border:1px solid #4b2bff44; border-radius:16px; padding:14px; box-shadow:0 0 22px #7c4dff18; }
+  .left { display:flex; flex-direction:column; gap:12px; min-height:0; }
+  .toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  select,input[type=text],input[type=number],textarea { background:var(--panel2); color:var(--text); border:1px solid #ffffff1c; border-radius:10px; padding:8px 10px; font:inherit; min-width:0; }
+  input[type=color] { width:44px; height:34px; border:0; background:none; padding:0; }
+  button { font:inherit; color:#fff; background:var(--panel2); border:1px solid #ffffff22; border-radius:10px; padding:8px 12px; cursor:pointer; }
+  button:hover { border-color:var(--purple); } button.pri { background:var(--purple); border-color:var(--purple); } button.danger { color:#ff6b81; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .tab { padding:7px 16px; border-radius:999px; background:var(--panel); border:1px solid #ffffff1c; cursor:pointer; }
+  .tab.on { background:var(--purple); border-color:var(--purple); }
+  #gridWrap { flex:1; min-height:0; display:grid; place-items:center; }
+  #grid { display:grid; gap:12px; width:min(100%, calc((100vh - 280px) * var(--ar))); aspect-ratio:var(--ar); }
+  .key { container-type:size; position:relative; border-radius:20px; border:2px solid transparent; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4cqmin; cursor:pointer; min-width:0; min-height:0; }
+  .key.sel { outline:3px solid #fff; outline-offset:2px; }
+  .key.empty { border:1px dashed #7c4dff66; background:#0e0e24; color:#7c4dff; font:34px MI; display:grid; place-items:center; }
+  .key.over { outline:3px solid var(--green); }
+  .key .ic { font-family:MI; font-size:38cqmin; line-height:1; } .key .ic.txt { font-family:system-ui,'Segoe UI Emoji'; font-weight:700; font-size:34cqmin; }
+  .key img { width:42cqmin; height:42cqmin; object-fit:cover; border-radius:20%; }
+  .key .lb { font-size:max(11px,11cqmin); text-align:center; padding:0 6px; line-height:1.1; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+  aside { display:flex; flex-direction:column; min-height:0; }
+  .side-tabs { display:flex; gap:6px; margin-bottom:10px; } .side-tabs .tab { flex:1; text-align:center; border-radius:10px; }
+  .scroll { overflow:auto; min-height:0; flex:1; padding-right:4px; }
+  label.f { display:block; margin:10px 0 4px; color:var(--muted); font-size:12px; }
+  label.f input[type=text], label.f input[type=number], label.f select { width:100%; }
+  .icons { display:grid; grid-template-columns:repeat(auto-fill,minmax(40px,1fr)); gap:5px; max-height:170px; overflow:auto; margin-top:6px; }
+  .icons div { font:22px MI; text-align:center; padding:7px 0; border-radius:8px; background:var(--panel2); cursor:pointer; border:1px solid transparent; }
+  .icons div.on { border-color:var(--purple); background:#7c4dff55; }
+  .sw { display:flex; flex-wrap:wrap; gap:7px; align-items:center; margin-top:4px; }
+  .sw i { width:26px; height:26px; border-radius:50%; cursor:pointer; display:block; border:2px solid transparent; }
+  .list .item { display:flex; align-items:center; gap:10px; padding:8px; border-radius:10px; background:var(--panel2); margin-bottom:6px; }
+  .list .item img { width:30px; height:30px; } .list .item .nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .step { border:1px solid #ffffff1c; border-radius:12px; padding:8px; margin:8px 0; background:#0b0b22; }
+  .hint { color:var(--muted); font-size:12px; margin-top:6px; }
+  .row { display:flex; gap:8px; align-items:center; } .row > * { flex:1; }
+  @media (max-width:980px) { main { grid-template-columns:1fr; overflow:auto; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">play_arrow</div>
+  <div><h1>StreamDeck Editor</h1><small>Customize your buttons here — the phone updates instantly</small></div>
+  <div class="sp"></div>
+  <div id="info" style="color:var(--muted);font-size:13px"></div>
+  <div id="saved">Loading…</div>
+</header>
+<main>
+  <section class="left">
+    <div class="box toolbar">
+      <b>Profile</b><select id="profSel"></select>
+      <button id="profAdd">+ New</button><button id="profRen">Rename</button><button id="profDel" class="danger">Delete</button>
+      <span class="sp"></span>
+      <button id="profDefault" title="The profile phones open by default">Set as phone default</button>
+    </div>
+    <div class="box" style="flex:1;display:flex;flex-direction:column;min-height:0">
+      <div class="tabs" id="pageTabs"></div>
+      <div class="toolbar" style="margin:10px 0">
+        <span style="color:var(--muted)">Page size</span>
+        <input type="number" id="cols" min="1" max="10" style="width:64px"> ×
+        <input type="number" id="rows" min="1" max="10" style="width:64px">
+        <button id="pgRen">Rename page</button><button id="pgDel" class="danger">Delete page</button>
+        <span class="sp"></span><span class="hint">Drag buttons to rearrange · click to edit</span>
+      </div>
+      <div id="gridWrap"><div id="grid"></div></div>
+    </div>
+  </section>
+  <aside class="box">
+    <div class="side-tabs"><div class="tab on" data-t="btn">Button</div><div class="tab" data-t="apps">Apps & games</div><div class="tab" data-t="presets">Presets</div></div>
+    <div class="scroll" id="panel"></div>
+  </aside>
+</main>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.createElement(tag), props); kids.flat().forEach(k => e.append(k)); return e; };
+const J = { headers: { 'Content-Type': 'application/json', 'X-SD-Editor': '1' } };
+
+// ------------------------------------------------------------------ catalog (all actions the PC understands)
+const ACTIONS = [
+  { type:'volume_up', label:'Volume up', cat:'Audio', params:[{k:'step',l:'Step %',kind:'number',def:5}] },
+  { type:'volume_down', label:'Volume down', cat:'Audio', params:[{k:'step',l:'Step %',kind:'number',def:5}] },
+  { type:'volume_set', label:'Set volume', cat:'Audio', params:[{k:'value',l:'Volume %',kind:'number',def:50}] },
+  { type:'mute_toggle', label:'Mute / unmute speakers', cat:'Audio', params:[] },
+  { type:'mic_toggle', label:'Mute / unmute microphone', cat:'Audio', params:[] },
+  { type:'media', label:'Media key', cat:'Audio', params:[{k:'key',l:'Key',kind:'choice',def:'playpause',options:['playpause','next','prev','stop']}] },
+  { type:'brightness_up', label:'Brightness up', cat:'Display', params:[{k:'step',l:'Step %',kind:'number',def:10}] },
+  { type:'brightness_down', label:'Brightness down', cat:'Display', params:[{k:'step',l:'Step %',kind:'number',def:10}] },
+  { type:'brightness_set', label:'Set brightness', cat:'Display', params:[{k:'value',l:'Brightness %',kind:'number',def:70}] },
+  { type:'screenshot', label:'Screenshot (saved on PC)', cat:'Display', params:[] },
+  { type:'wallpaper', label:'Change wallpaper', cat:'Display', params:[
+      {k:'mode',l:'Mode',kind:'choice',def:'next',options:['next','random']},
+      {k:'folder',l:'Folder with pictures (blank = uploaded library)',kind:'text',hint:'C:\\Users\\me\\Pictures\\Walls'},
+      {k:'path',l:'…or one picture file (overrides the above)',kind:'text',hint:'C:\\Users\\me\\Pictures\\a.jpg'}] },
+  { type:'hotkey', label:'Keyboard shortcut', cat:'Input', params:[{k:'keys',l:'Keys',kind:'text',hint:'ctrl+shift+esc, win+d, alt+f4'}] },
+  { type:'text', label:'Type text', cat:'Input', params:[{k:'text',l:'Text',kind:'text'}] },
+  { type:'app', label:'Open installed app / game', cat:'Launch', params:[{k:'appId',l:'App',kind:'app'}] },
+  { type:'launch', label:'Open file or program path', cat:'Launch', params:[{k:'target',l:'Path',kind:'text',hint:'C:\\Program Files\\App\\app.exe'},{k:'args',l:'Arguments',kind:'text'}] },
+  { type:'url', label:'Open website', cat:'Launch', params:[{k:'url',l:'URL',kind:'text',hint:'https://'}] },
+  { type:'close_app', label:'Close app (process name)', cat:'Launch', params:[{k:'name',l:'Process',kind:'text',hint:'chrome'}] },
+  { type:'shell', label:'Run command (enable in host Settings)', cat:'Launch', params:[{k:'command',l:'Command',kind:'text'}] },
+  { type:'lock', label:'Lock PC', cat:'Power', params:[] },
+  { type:'sleep', label:'Sleep', cat:'Power', params:[] },
+  { type:'logout', label:'Sign out', cat:'Power', params:[] },
+  { type:'restart', label:'Restart', cat:'Power', params:[] },
+  { type:'shutdown', label:'Shut down', cat:'Power', params:[] },
+  { type:'macro', label:'Macro (several steps)', cat:'Flow', params:[] },
+  { type:'delay', label:'Wait (macro step)', cat:'Flow', params:[{k:'ms',l:'Milliseconds',kind:'number',def:500}] },
+];
+const def = t => ACTIONS.find(a => a.type === t) || ACTIONS[0];
+const defaults = t => { const a = { type: t }; def(t).params.forEach(p => { if (p.def !== undefined) a[p.k] = p.def; }); if (t === 'macro') a.steps = []; return a; };
+const PALETTE = ['#1e90ff','#00e5ff','#7c4dff','#d500f9','#ff1744','#ff6d00','#ffc400','#76ff03','#00e676','#1de9b6','#ff4081','#b0bec5'];
+const PRESETS = [
+  ['Volume Up','volume_up','#1e90ff','#00e5ff',{type:'volume_up',step:5}],['Volume Down','volume_down','#1e90ff','#00e5ff',{type:'volume_down',step:5}],
+  ['Mute','volume_off','#ff1744','#b71c1c',{type:'mute_toggle'}],['Mic Mute','mic_off','#7c4dff','#d500f9',{type:'mic_toggle'}],
+  ['Brightness +','wb_sunny','#ffc400','#ff6d00',{type:'brightness_up',step:10}],['Brightness -','brightness_low','#ffc400','#8d6e00',{type:'brightness_down',step:10}],
+  ['Screenshot','photo_camera','#7c4dff','#1e90ff',{type:'screenshot'}],['Lock PC','lock','#1e90ff','#0d47a1',{type:'lock'}],
+  ['Sleep','bedtime','#7c4dff','#311b92',{type:'sleep'},true],['Shutdown','power_settings_new','#00e676','#1b5e20',{type:'shutdown'},true],
+  ['Restart','restart_alt','#00e5ff','#0277bd',{type:'restart'},true],['Sign out','logout','#ff6d00','#bf360c',{type:'logout'},true],
+  ['Play / Pause','play_arrow','#1de9b6','#00897b',{type:'media',key:'playpause'}],['Next','skip_next','#1de9b6','#00897b',{type:'media',key:'next'}],
+  ['Previous','skip_previous','#1de9b6','#00897b',{type:'media',key:'prev'}],['Show Desktop','desktop_windows','#1e90ff','#7c4dff',{type:'hotkey',keys:'win+d'}],
+  ['Task Manager','speed','#b0bec5','#455a64',{type:'hotkey',keys:'ctrl+shift+esc'}],['Next Wallpaper','image','#1e90ff','#00e676',{type:'wallpaper',mode:'next'}],
+];
+
+// ------------------------------------------------------------------ state
+let L = null, icons = {}, iconNames = [], apps = null;
+let pi = 0, gi = 0, sel = -1, tab = 'btn', saveT = null, dragFrom = -1;
+const prof = () => L.profiles[pi];
+const page = () => prof().pages[gi];
+const uid = () => Math.random().toString(16).slice(2, 14);
+const rgba = (h, a) => { const n = parseInt(h.replace('#', ''), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
+
+function setSaved(txt, cls) { const s = $('saved'); s.textContent = txt; s.className = cls || ''; }
+function changed() { setSaved('Saving…'); clearTimeout(saveT); saveT = setTimeout(save, 450); draw(false); }
+async function save() {
+  try {
+    const r = await fetch('/api/layout', { method: 'PUT', body: JSON.stringify(L), ...J });
+    const j = await r.json();
+    if (!r.ok) setSaved('Not saved: ' + (j.error || r.status), 'err'); else { L.version = j.version; setSaved('Saved · sent to phones', 'ok'); }
+  } catch (e) { setSaved('Not saved: ' + e.message, 'err'); }
+}
+
+// ------------------------------------------------------------------ key rendering
+function keyNode(b) {
+  const k = el('div', { className: 'key' });
+  k.style.background = `linear-gradient(180deg,${rgba(b.color1, .3)},#080818) padding-box, linear-gradient(135deg,${b.color1},${b.color2}) border-box`;
+  k.style.boxShadow = `0 0 ${Math.round(4 + 22 * b.glow)}px ${rgba(b.color1, .15 + .45 * b.glow)}`;
+  let ic;
+  if (b.image) ic = el('img', { src: b.image });
+  else {
+    ic = el('div', { className: 'ic' }); ic.style.color = `color-mix(in srgb, ${b.color1} 65%, white)`; ic.style.textShadow = `0 0 14px ${b.color1}`;
+    if ((b.icon || '').startsWith('t:')) { ic.classList.add('txt'); ic.textContent = b.icon.slice(2); }
+    else ic.textContent = icons[b.icon] ? String.fromCodePoint(icons[b.icon]) : '';
+  }
+  k.append(ic, el('div', { className: 'lb', textContent: b.label }));
+  return k;
+}
+
+function draw(full = true) {
+  // profiles
+  const ps = $('profSel'); ps.innerHTML = '';
+  L.profiles.forEach((p, i) => ps.append(el('option', { value: i, textContent: p.name + (p.id === L.activeProfile ? '  (phone default)' : ''), selected: i === pi })));
+  // page tabs
+  const tabs = $('pageTabs'); tabs.innerHTML = '';
+  prof().pages.forEach((p, i) => { const t = el('div', { className: 'tab' + (i === gi ? ' on' : ''), textContent: p.name }); t.onclick = () => { gi = i; sel = -1; draw(); }; tabs.append(t); });
+  tabs.append(el('div', { className: 'tab', textContent: '+ Page', onclick: () => { prof().pages.push(newPage('Page ' + (prof().pages.length + 1), 4, 4)); gi = prof().pages.length - 1; sel = -1; changed(); } }));
+  const pg = page(); $('cols').value = pg.cols; $('rows').value = pg.rows;
+  // grid
+  const g = $('grid'); g.innerHTML = ''; g.style.setProperty('--ar', pg.cols / pg.rows);
+  g.style.gridTemplateColumns = `repeat(${pg.cols},minmax(0,1fr))`; g.style.gridTemplateRows = `repeat(${pg.rows},minmax(0,1fr))`;
+  pg.slots.forEach((b, i) => {
+    const k = b ? keyNode(b) : el('div', { className: 'key empty', textContent: iconNames.length ? String.fromCodePoint(icons.add || 0xe145) : '+' });
+    if (i === sel) k.classList.add('sel');
+    k.onclick = () => { sel = i; if (tab !== 'btn' && b) tab = 'btn'; draw(); };
+    if (b) k.draggable = true;
+    k.ondragstart = e => { dragFrom = i; e.dataTransfer.effectAllowed = 'move'; };
+    k.ondragover = e => { e.preventDefault(); k.classList.add('over'); };
+    k.ondragleave = () => k.classList.remove('over');
+    k.ondrop = e => { e.preventDefault(); if (dragFrom >= 0 && dragFrom !== i) { [pg.slots[dragFrom], pg.slots[i]] = [pg.slots[i], pg.slots[dragFrom]]; sel = i; changed(); } dragFrom = -1; };
+    g.append(k);
+  });
+  document.querySelectorAll('.side-tabs .tab').forEach(t => t.classList.toggle('on', t.dataset.t === tab));
+  if (full || true) drawPanel();
+}
+
+function newPage(name, cols, rows) { return { id: uid(), name, cols, rows, slots: Array(cols * rows).fill(null) }; }
+function resizePage(pg, c, r) {
+  const keep = pg.slots.filter(Boolean); pg.cols = c; pg.rows = r; pg.slots = Array(c * r).fill(null);
+  // keep positions where they still fit, otherwise compact
+  const old = keep.slice(); old.forEach((b, i) => { if (i < pg.slots.length) pg.slots[i] = b; });
+}
+function newButton(over = {}) { return Object.assign({ id: uid(), label: 'New button', icon: 'bolt', image: null, color1: '#1e90ff', color2: '#7c4dff', glow: 0.6, confirm: false, action: defaults('volume_up') }, over); }
+
+function placeButton(b) {
+  const pg = page(); let i = (sel >= 0 && !pg.slots[sel]) ? sel : pg.slots.findIndex(s => !s);
+  if (i < 0) { alert('This page is full. Make it bigger or add a page.'); return; }
+  pg.slots[i] = b; sel = i; tab = 'btn'; changed();
+}
+
+// ------------------------------------------------------------------ side panel
+function drawPanel() {
+  const p = $('panel'); p.innerHTML = '';
+  if (tab === 'apps') return panelApps(p);
+  if (tab === 'presets') return panelPresets(p);
+  const b = sel >= 0 ? page().slots[sel] : null;
+  if (!b) {
+    p.append(el('p', { className: 'hint', textContent: sel >= 0 ? 'This slot is empty.' : 'Click a button to edit it, or an empty slot to add one.' }));
+    if (sel >= 0) p.append(el('button', { className: 'pri', textContent: '+ Create button here', onclick: () => placeButton(newButton()) }));
+    return;
+  }
+  const upd = (redrawPanel) => { changed(); if (redrawPanel) drawPanel(); };
+  const field = (label, node) => el('label', { className: 'f' }, label, node);
+
+  const lab = el('input', { type: 'text', value: b.label }); lab.oninput = () => { b.label = lab.value; changed(); };
+  p.append(field('Label', lab));
+
+  // icon
+  const q = el('input', { type: 'text', placeholder: 'Search icons (volume, mic, game…)' });
+  const grid = el('div', { className: 'icons' });
+  const fill = () => { grid.innerHTML = ''; const s = q.value.toLowerCase();
+    iconNames.filter(n => n.includes(s)).slice(0, 160).forEach(n => { const d = el('div', { textContent: String.fromCodePoint(icons[n]), title: n }); if (b.icon === n && !b.image) d.classList.add('on'); d.onclick = () => { b.icon = n; b.image = null; upd(true); }; grid.append(d); }); };
+  q.oninput = fill; fill();
+  const txt = el('input', { type: 'text', placeholder: 'Or type an emoji / short text (e.g. 🎮, OBS)', value: (b.icon || '').startsWith('t:') && !b.image ? b.icon.slice(2) : '', maxLength: 4 });
+  txt.oninput = () => { if (txt.value) { b.icon = 't:' + txt.value; b.image = null; changed(); } };
+  const file = el('input', { type: 'file', accept: 'image/*' });
+  file.onchange = () => { const f = file.files[0]; if (!f) return; const im = new Image(); im.onload = () => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); const s = Math.min(im.width, im.height); x.drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, 128, 128); b.image = c.toDataURL('image/png'); upd(true); }; im.src = URL.createObjectURL(f); };
+  p.append(field('Icon', q), grid, el('div', { style: 'margin-top:8px' }, txt), field('…or upload your own image', file));
+  if (b.image) p.append(el('button', { textContent: 'Remove image', onclick: () => { b.image = null; upd(true); } }));
+
+  // colors
+  const colorRow = (label, key) => { const c = el('input', { type: 'color', value: b[key] }); c.oninput = () => { b[key] = c.value; changed(); };
+    const sw = el('div', { className: 'sw' }, PALETTE.map(h => { const i = el('i'); i.style.background = h; i.onclick = () => { b[key] = h; upd(true); }; return i; }), c);
+    return field(label, sw); };
+  p.append(colorRow('Border / gradient start', 'color1'), colorRow('Gradient end', 'color2'));
+  const gl = el('input', { type: 'range', min: 0, max: 1, step: 0.05, value: b.glow }); gl.oninput = () => { b.glow = +gl.value; changed(); };
+  p.append(field('Glow', gl));
+  const cf = el('input', { type: 'checkbox', checked: b.confirm }); cf.onchange = () => { b.confirm = cf.checked; changed(); };
+  p.append(el('label', { className: 'f', style: 'display:flex;gap:8px;align-items:center' }, cf, 'Ask for confirmation on the phone before running'));
+
+  // action
+  p.append(el('hr', { style: 'border:0;border-top:1px solid #ffffff1c;margin:14px 0' }), el('b', { textContent: 'What it does on the PC' }));
+  p.append(actionEditor(b.action, () => upd(false), () => upd(true), true));
+  const test = el('button', { textContent: '▶ Test on this PC', className: 'pri', style: 'margin-top:12px' });
+  const res = el('div', { className: 'hint' });
+  test.onclick = async () => { res.textContent = 'Running…'; try { const r = await (await fetch('/api/test-action', { method: 'POST', body: JSON.stringify(b.action), ...J })).json(); res.textContent = r.ok ? ('Done' + (r.message ? ' – ' + r.message : '')) : 'Failed: ' + r.error; res.style.color = r.ok ? '#22e58b' : '#ff6b81'; } catch (e) { res.textContent = e.message; } };
+  p.append(test, res);
+  p.append(el('div', { className: 'row', style: 'margin-top:14px' },
+    el('button', { textContent: 'Duplicate', onclick: () => { const c = JSON.parse(JSON.stringify(b)); c.id = uid(); const pg = page(), i = pg.slots.findIndex(s => !s); if (i >= 0) { pg.slots[i] = c; sel = i; changed(); } else alert('Page is full'); } }),
+    el('button', { className: 'danger', textContent: 'Remove', onclick: () => { page().slots[sel] = null; changed(); } })));
+}
+
+function actionEditor(a, onValue, onStructure, allowMacro) {
+  const box = el('div');
+  const sel_ = el('select');
+  const cats = {}; ACTIONS.forEach(x => { if (!allowMacro && x.type === 'macro') return; (cats[x.cat] = cats[x.cat] || []).push(x); });
+  Object.entries(cats).forEach(([c, list]) => { const g = el('optgroup', { label: c }); list.forEach(x => g.append(el('option', { value: x.type, textContent: x.label, selected: x.type === a.type }))); sel_.append(g); });
+  sel_.onchange = () => { Object.keys(a).forEach(k => delete a[k]); Object.assign(a, defaults(sel_.value)); onStructure(); };
+  box.append(el('label', { className: 'f' }, 'Action', sel_));
+  const d = def(a.type);
+  d.params.forEach(pm => {
+    let inp;
+    if (pm.kind === 'choice') { inp = el('select'); pm.options.forEach(o => inp.append(el('option', { value: o, textContent: o, selected: a[pm.k] === o }))); inp.onchange = () => { a[pm.k] = inp.value; onValue(); }; }
+    else if (pm.kind === 'number') { inp = el('input', { type: 'number', value: a[pm.k] ?? '' }); inp.oninput = () => { a[pm.k] = parseInt(inp.value || '0', 10); onValue(); }; }
+    else if (pm.kind === 'app') { inp = appPicker(a, onValue); }
+    else { inp = el('input', { type: 'text', value: a[pm.k] ?? '', placeholder: pm.hint || '' }); inp.oninput = () => { a[pm.k] = inp.value; onValue(); }; }
+    box.append(el('label', { className: 'f' }, pm.l, inp));
+  });
+  if (a.type === 'macro') {
+    a.steps = a.steps || [];
+    a.steps.forEach((s, i) => {
+      const st = el('div', { className: 'step' });
+      st.append(actionEditor(s, onValue, onStructure, false));
+      st.append(el('div', { className: 'row', style: 'margin-top:6px' },
+        el('button', { textContent: '↑', onclick: () => { if (i > 0) { [a.steps[i - 1], a.steps[i]] = [a.steps[i], a.steps[i - 1]]; onStructure(); } } }),
+        el('button', { textContent: '↓', onclick: () => { if (i < a.steps.length - 1) { [a.steps[i + 1], a.steps[i]] = [a.steps[i], a.steps[i + 1]]; onStructure(); } } }),
+        el('button', { className: 'danger', textContent: 'Remove step', onclick: () => { a.steps.splice(i, 1); onStructure(); } })));
+      box.append(el('div', { className: 'hint', textContent: 'Step ' + (i + 1) }), st);
+    });
+    box.append(el('button', { textContent: '+ Add step', onclick: () => { a.steps.push(defaults('hotkey')); onStructure(); } }));
+    if (!a.steps.length) box.append(el('div', { className: 'hint', textContent: 'Steps run top to bottom. Use "Wait" for pauses.' }));
+  }
+  return box;
+}
+
+function appPicker(a, onValue) {
+  const dl = el('datalist', { id: 'appsdl' + uid() });
+  const inp = el('input', { type: 'text', placeholder: 'Type to search installed apps…', value: a.appName || '' });
+  inp.setAttribute('list', dl.id);
+  loadApps().then(list => { list.forEach(x => dl.append(el('option', { value: x.name }))); });
+  inp.onchange = async () => { const list = await loadApps(); const f = list.find(x => x.name.toLowerCase() === inp.value.toLowerCase()); if (f) { a.appId = f.id; a.appName = f.name; onValue(); } };
+  return el('span', {}, inp, dl);
+}
+
+async function loadApps(refresh) {
+  if (apps && !refresh) return apps;
+  apps = await (await fetch('/api/apps' + (refresh ? '?refresh=1' : ''))).json();
+  return apps;
+}
+
+function panelApps(p) {
+  p.append(el('div', { className: 'hint', textContent: 'Click + to add a button for an app or game (uses its real icon).' }));
+  const q = el('input', { type: 'text', placeholder: 'Search…', style: 'width:100%;margin:8px 0' });
+  const list = el('div', { className: 'list' }, el('div', { className: 'hint', textContent: 'Scanning installed apps… (first scan can take 10–20 s)' }));
+  p.append(q, el('button', { textContent: 'Rescan', onclick: () => { apps = null; drawPanel(); } }), list);
+  const show = all => { list.innerHTML = ''; const s = q.value.toLowerCase();
+    all.filter(a => a.name.toLowerCase().includes(s)).slice(0, 150).forEach(a => {
+      const it = el('div', { className: 'item' });
+      it.append(a.icon ? el('img', { src: 'data:image/png;base64,' + a.icon }) : el('span', { style: 'font:26px MI', textContent: String.fromCodePoint(icons[a.kind === 'game' ? 'sports_esports' : 'apps'] || 0) }),
+        el('div', { className: 'nm', textContent: a.name }), el('small', { style: 'color:var(--muted)', textContent: a.kind }),
+        el('button', { textContent: '+', onclick: () => placeButton(newButton({ label: a.name, icon: a.kind === 'game' ? 'sports_esports' : 'apps', image: a.icon ? 'data:image/png;base64,' + a.icon : null, color1: a.kind === 'game' ? '#00e676' : '#7c4dff', color2: a.kind === 'game' ? '#1b5e20' : '#1e90ff', action: { type: 'app', appId: a.id, appName: a.name } })) }));
+      list.append(it); }); };
+  loadApps().then(all => { show(all); q.oninput = () => show(all); }).catch(e => { list.textContent = 'Could not scan apps: ' + e.message; });
+}
+
+function panelPresets(p) {
+  p.append(el('div', { className: 'hint', textContent: 'Click + to add a ready-made system button.' }));
+  const list = el('div', { className: 'list', style: 'margin-top:8px' });
+  PRESETS.forEach(([label, icon, c1, c2, action, confirm]) => {
+    const it = el('div', { className: 'item' });
+    const ic = el('span', { style: `font:24px MI;color:${c1}`, textContent: String.fromCodePoint(icons[icon] || 0) });
+    it.append(ic, el('div', { className: 'nm', textContent: label }), el('button', { textContent: '+', onclick: () => placeButton(newButton({ label, icon, color1: c1, color2: c2, confirm: !!confirm, action: JSON.parse(JSON.stringify(action)) })) }));
+    list.append(it);
+  });
+  p.append(list);
+}
+
+// ------------------------------------------------------------------ wiring
+$('profSel').onchange = e => { pi = +e.target.value; gi = 0; sel = -1; draw(); };
+$('profAdd').onclick = () => { const n = prompt('Profile name?'); if (!n) return; L.profiles.push({ id: uid(), name: n, pages: [newPage('Page 1', 4, 4)] }); pi = L.profiles.length - 1; gi = 0; sel = -1; changed(); };
+$('profRen').onclick = () => { const n = prompt('Rename profile', prof().name); if (n) { prof().name = n; changed(); } };
+$('profDel').onclick = () => { if (L.profiles.length < 2) return alert('You need at least one profile.'); if (!confirm('Delete profile "' + prof().name + '"?')) return; const id = prof().id; L.profiles.splice(pi, 1); if (L.activeProfile === id) L.activeProfile = L.profiles[0].id; pi = 0; gi = 0; sel = -1; changed(); };
+$('profDefault').onclick = () => { L.activeProfile = prof().id; changed(); };
+$('pgRen').onclick = () => { const n = prompt('Rename page', page().name); if (n) { page().name = n; changed(); } };
+$('pgDel').onclick = () => { if (prof().pages.length < 2) return alert('A profile needs at least one page.'); if (!confirm('Delete page "' + page().name + '"?')) return; prof().pages.splice(gi, 1); gi = 0; sel = -1; changed(); };
+const sizeChange = () => { const c = Math.max(1, Math.min(10, +$('cols').value || 1)), r = Math.max(1, Math.min(10, +$('rows').value || 1)); resizePage(page(), c, r); sel = -1; changed(); };
+$('cols').onchange = sizeChange; $('rows').onchange = sizeChange;
+document.querySelectorAll('.side-tabs .tab').forEach(t => t.onclick = () => { tab = t.dataset.t; drawPanel(); document.querySelectorAll('.side-tabs .tab').forEach(x => x.classList.toggle('on', x === t)); });
+
+(async function boot() {
+  try {
+    icons = await (await fetch('/assets/icons.json')).json(); iconNames = Object.keys(icons).sort();
+    await document.fonts.load('24px MI');
+    document.querySelector('.logo').textContent = String.fromCodePoint(icons.play_arrow);
+    L = await (await fetch('/api/layout')).json();
+    pi = Math.max(0, L.profiles.findIndex(p => p.id === L.activeProfile));
+    const info = await (await fetch('/api/info')).json();
+    $('info').textContent = `${info.pc} · v${info.version} · ${info.phones} phone(s) connected`;
+    setSaved('Loaded', 'ok'); draw();
+    setInterval(async () => { try { const i = await (await fetch('/api/info')).json(); $('info').textContent = `${i.pc} · v${i.version} · ${i.phones} phone(s) connected`; } catch (e) {} }, 5000);
+  } catch (e) { setSaved('Could not load: ' + e.message, 'err'); }
+})();
+</script>
+</body>
+</html>

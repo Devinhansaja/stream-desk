@@ -1,7 +1,7 @@
 ; Inno Setup script for the StreamDeck Host Windows installer.
 ; Build:  iscc installer\StreamDeckHost.iss      (after running build-windows.ps1, which fills windows\publish)
 #define AppName "StreamDeck Host"
-#define AppVersion "1.0.0"
+#define AppVersion "1.1.0"
 #define AppExe "StreamDeckHost.exe"
 
 [Setup]
@@ -17,7 +17,7 @@ Compression=lzma2
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
-PrivilegesRequired=admin
+PrivilegesRequired=lowest
 MinVersion=10.0
 UninstallDisplayIcon={app}\{#AppExe}
 WizardStyle=modern
@@ -40,11 +40,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: 
 
 [Run]
 ; Allow the phone to reach the PC over Wi-Fi (private networks only).
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""StreamDeck Host"" dir=in action=allow program=""{app}\{#AppExe}"" protocol=TCP localport=47800 profile=private,domain"; Flags: runhidden
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""StreamDeck Host Discovery"" dir=in action=allow program=""{app}\{#AppExe}"" protocol=UDP localport=47801 profile=private,domain"; Flags: runhidden
 Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""StreamDeck Host"""; Flags: runhidden; RunOnceId: "fw1"
-Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""StreamDeck Host Discovery"""; Flags: runhidden; RunOnceId: "fw2"
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM {#AppExe}"; Flags: runhidden; RunOnceId: "kill"

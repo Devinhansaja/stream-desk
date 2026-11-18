@@ -20,12 +20,16 @@ public sealed class AppSettings
     /// <summary>Automatically run "adb reverse" so an Android phone on USB can reach this PC.</summary>
     public bool AutoUsb { get; set; } = true;
     public bool StartWithWindows { get; set; }
+    /// <summary>Download and install new versions from GitHub Releases.</summary>
+    public bool AutoUpdate { get; set; } = true;
+    public bool FirewallAsked { get; set; }
     public List<DeviceRecord> Devices { get; set; } = new();
 }
 
 public static class AppPaths
 {
-    public static readonly string Root = Path.Combine(
+    // SDH_DATA_DIR lets automated tests run without touching the real settings.
+    public static readonly string Root = Environment.GetEnvironmentVariable("SDH_DATA_DIR") is { Length: > 0 } d ? d : Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StreamDeckHost");
     public static string Settings => Path.Combine(Root, "settings.json");
     public static string Wallpapers => Path.Combine(Root, "Wallpapers");
@@ -42,6 +46,7 @@ public sealed class SettingsStore
 {
     readonly object gate = new();
     public AppSettings Data { get; private set; } = new();
+    int diskPort = 47800;
 
     public void Load()
     {
@@ -54,6 +59,7 @@ public sealed class SettingsStore
                     Data = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(AppPaths.Settings)) ?? new();
             }
             catch { Data = new(); }
+            diskPort = Data.Port;
         }
     }
 
@@ -64,7 +70,11 @@ public sealed class SettingsStore
             try
             {
                 var tmp = AppPaths.Settings + ".tmp";
-                File.WriteAllText(tmp, JsonSerializer.Serialize(Data, new JsonSerializerOptions { WriteIndented = true }));
+                // A --port override is for this run only: never write it to disk.
+                var runtimePort = Data.Port;
+                Data.Port = diskPort;
+                try { File.WriteAllText(tmp, JsonSerializer.Serialize(Data, new JsonSerializerOptions { WriteIndented = true })); }
+                finally { Data.Port = runtimePort; }
                 File.Move(tmp, AppPaths.Settings, true);
             }
             catch { /* best effort */ }

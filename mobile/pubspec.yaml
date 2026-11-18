@@ -1,7 +1,7 @@
 name: streamdeck_mobile
 description: Android Stream Deck style controller for a Windows PC.
 publish_to: "none"
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -11,9 +11,9 @@ dependencies:
     sdk: flutter
   web_socket_channel: ^3.0.1
   shared_preferences: ^2.3.2
-  path_provider: ^2.1.4
-  image_picker: ^1.1.2
   mobile_scanner: ^6.0.2
+  webview_flutter: ^4.10.0
+  wakelock_plus: ^1.2.8
 
 dev_dependencies:
   flutter_test:
