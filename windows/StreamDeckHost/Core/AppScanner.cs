@@ -63,7 +63,7 @@ public static class AppScanner
             {
                 var name = Path.GetFileNameWithoutExtension(f);
                 if (Regex.IsMatch(name, "uninstall|readme|release notes|documentation|help$", RegexOptions.IgnoreCase)) continue;
-                yield return new InstalledApp("lnk:" + ShortId(f), name, "app", f, IconFor(f));
+                yield return new InstalledApp("lnk:" + ShortId(f), name, "app", f, IconForShortcut(f) ?? IconFor(f));
             }
         }
     }
@@ -129,6 +129,63 @@ public static class AppScanner
         return results;
     }
 
+    /// <summary>
+    /// The real app icon, not the shortcut picture (which carries the little arrow overlay):
+    /// use the shortcut's icon location, else its target program, rendered at 64px.
+    /// </summary>
+    static string? IconForShortcut(string lnk)
+    {
+        try
+        {
+            var type = Type.GetTypeFromProgID("WScript.Shell");
+            if (type == null) return null;
+            dynamic shell = Activator.CreateInstance(type)!;
+            dynamic sc = shell.CreateShortcut(lnk);
+            string target = Environment.ExpandEnvironmentVariables((string)(sc.TargetPath ?? ""));
+            string loc = Environment.ExpandEnvironmentVariables((string)(sc.IconLocation ?? ""));
+
+            var candidates = new List<(string path, int idx)>();
+            if (loc.Length > 0)
+            {
+                int comma = loc.LastIndexOf(',');
+                string p = loc, idxText = "0";
+                if (comma > 1) { p = loc[..comma]; idxText = loc[(comma + 1)..]; }
+                int.TryParse(idxText, out var idx);
+                candidates.Add((p.Trim('"', ' '), idx));
+            }
+            if (target.Length > 0) candidates.Add((target, 0));
+
+            foreach (var (path, idx) in candidates)
+            {
+                if (!File.Exists(path)) continue;
+                try
+                {
+                    using var icon = path.EndsWith(".ico", StringComparison.OrdinalIgnoreCase)
+                        ? new Icon(path, 64, 64)
+                        : Icon.ExtractIcon(path, idx, 64);
+                    if (icon == null) continue;
+                    return ToPng(icon);
+                }
+                catch { }
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    static string ToPng(Icon icon)
+    {
+        using var src = icon.ToBitmap();
+        using var bmp = new Bitmap(64, 64, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.DrawImage(src, 0, 0, 64, 64);
+        }
+        using var ms = new MemoryStream();
+        bmp.Save(ms, ImageFormat.Png);
+        return Convert.ToBase64String(ms.ToArray());
+    }
     static string? IconFor(string path)
     {
         try

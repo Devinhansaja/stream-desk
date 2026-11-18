@@ -3,52 +3,63 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#05050f">
+<meta name="theme-color" content="#000000">
 <title>StreamDeck</title>
 <style>
   @font-face { font-family: MI; src: url(/assets/MaterialIcons.otf); }
-  :root { --bg:#05050f; --muted:#9696bd; --gap:10px; }
+  :root { --gap:5px; --radius:14px; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none; }
-  html,body { margin:0; height:100%; background:var(--bg); color:#ededfb; font-family:system-ui,Roboto,sans-serif; overflow:hidden; touch-action:manipulation; }
-  body { position:fixed; inset:0; display:flex; flex-direction:column; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
-  #pages { flex:1; min-height:0; display:flex; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory; scrollbar-width:none; overscroll-behavior:contain; }
+  html,body { margin:0; height:100%; background:#000; color:#fff; font-family:system-ui,Roboto,sans-serif; overflow:hidden; touch-action:manipulation; }
+  body { position:fixed; inset:0; background-size:cover; background-position:center; }
+  body.neon { --gap:10px; --radius:20px; background-color:#05050f; }
+  #pages { position:absolute; inset:0; display:flex; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory; scrollbar-width:none; overscroll-behavior:contain; }
   #pages::-webkit-scrollbar { display:none; }
-  .page { flex:0 0 100%; scroll-snap-align:start; scroll-snap-stop:always; display:grid; gap:var(--gap); padding:var(--gap) var(--gap) 4px; min-height:0; }
-  .key { container-type:size; position:relative; min-width:0; min-height:0; border-radius:20px; border:2px solid transparent;
-         display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4cqmin; cursor:pointer; transition:transform .08s, filter .2s; }
+  .page { flex:0 0 100%; scroll-snap-align:start; scroll-snap-stop:always; display:grid; gap:var(--gap); padding:var(--gap); min-height:0; }
+  /* ---------- keys: flat style (default) ---------- */
+  .key { container-type:size; position:relative; min-width:0; min-height:0; border-radius:var(--radius); overflow:hidden;
+         background:rgba(0,0,0,.84); border:2px solid var(--bc,#555); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3cqmin;
+         transition:transform .08s, filter .2s; }
   .key.down { transform:scale(.93); }
-  .key.empty { border:1px solid #ffffff10; background:#0e0e24; opacity:.25; pointer-events:none; }
-  .key .ic { font-family:MI; font-size:38cqmin; line-height:1; font-feature-settings:'liga'; }
-  .key .ic.txt { font-family:system-ui,'Segoe UI Emoji',sans-serif; font-weight:700; font-size:34cqmin; }
-  .key img { width:42cqmin; height:42cqmin; object-fit:cover; border-radius:20%; }
-  .key .lb { font-size:max(11px,11cqmin); text-align:center; padding:0 6px; line-height:1.1; max-width:100%; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+  .key.empty { background:rgba(0,0,0,.25); border:1px solid #ffffff12; pointer-events:none; }
+  .key .ic { font-family:MI; font-size:44cqmin; line-height:1; color:var(--ic,#fff); }
+  .key .ic.txt { font-family:system-ui,'Segoe UI Emoji',sans-serif; font-weight:800; font-size:38cqmin; }
+  .key img { width:50cqmin; height:50cqmin; object-fit:cover; border-radius:18%; }
+  .key .lb { font-size:max(10px,11.5cqmin); font-weight:700; text-align:center; padding:0 4px; line-height:1.05; max-width:100%; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; text-shadow:0 1px 2px #000; }
+  .key .val { font-size:max(14px,24cqmin); font-weight:800; line-height:1; color:var(--ic,#fff); font-variant-numeric:tabular-nums; }
+  .key .val small { font-size:.55em; font-weight:700; }
+  .key .bar { width:70%; height:max(4px,6cqmin); border-radius:4px; background:#ffffff26; overflow:hidden; }
+  .key .bar i { display:block; height:100%; background:var(--ic,#22e58b); transition:width .4s; }
   .key.off { filter:saturate(.35) brightness(.7); }
-  .key.act { filter:brightness(1.25); }
-  .key.busy::after { content:''; position:absolute; inset:0; border-radius:18px; background:#ffffff25; animation:p .5s; }
+  .key.act { box-shadow:inset 0 0 0 2px var(--ic,#fff), 0 0 14px var(--ic,#fff); }
+  .key.busy::after { content:''; position:absolute; inset:0; background:#ffffff30; animation:p .45s forwards; }
   @keyframes p { from{opacity:1} to{opacity:0} }
-  #bar { height:26px; display:flex; align-items:center; justify-content:space-between; padding:0 14px; color:var(--muted); font-size:12px; flex:none; }
-  #dots { display:flex; gap:7px; }
-  #dots i { width:7px; height:7px; border-radius:50%; background:#3a3a66; display:block; }
-  #dots i.on { background:#7c4dff; box-shadow:0 0 6px #7c4dff; }
-  #st { display:flex; align-items:center; gap:6px; }
-  #dot { width:9px; height:9px; border-radius:50%; background:#ff5252; }
-  #dot.on { background:#22e58b; box-shadow:0 0 6px #22e58b; } #dot.mid { background:#ffc400; }
-  #menuBtn { font-family:MI; font-size:22px; color:var(--muted); padding:0 2px; }
-  #toast { position:fixed; left:50%; bottom:40px; transform:translateX(-50%); background:#8e1b2e; color:#fff; padding:10px 16px; border-radius:14px; font-size:14px; max-width:86vw; opacity:0; transition:opacity .2s; pointer-events:none; z-index:20; }
+  /* ---------- neon style ---------- */
+  body.neon .key { border:2px solid transparent; background:linear-gradient(180deg,var(--t1),#080818) padding-box, linear-gradient(135deg,var(--c1),var(--c2)) border-box; box-shadow:0 0 var(--gl) var(--ga); overflow:visible; }
+  body.neon .key .ic { color:color-mix(in srgb,var(--c1) 65%,white); text-shadow:0 0 14px var(--c1); }
+  /* ---------- overlays (no bars: keys fill the screen) ---------- */
+  #gear { position:fixed; top:calc(6px + env(safe-area-inset-top)); right:calc(6px + env(safe-area-inset-right)); width:30px; height:30px; border-radius:50%; background:#000000aa; display:grid; place-items:center; font:20px MI; opacity:.4; z-index:5; }
+  #dot { position:fixed; top:calc(2px + env(safe-area-inset-top)); right:calc(2px + env(safe-area-inset-right)); width:9px; height:9px; border-radius:50%; background:#ff5252; z-index:6; pointer-events:none; }
+  #dot.on { background:#22e58b; } #dot.mid { background:#ffc400; }
+  #dots { position:fixed; left:50%; bottom:6px; transform:translateX(-50%); display:flex; gap:7px; padding:5px 9px; border-radius:12px; background:#000000a0; opacity:0; transition:opacity .3s; pointer-events:none; z-index:5; }
+  #dots.show { opacity:1; } #dots i { width:7px; height:7px; border-radius:50%; background:#ffffff40; display:block; } #dots i.on { background:#fff; }
+  #banner { position:fixed; left:0; right:0; top:0; padding:6px; text-align:center; font-size:13px; background:#b71c1ccc; display:none; z-index:7; }
+  #banner.show { display:block; }
+  #toast { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); background:#8e1b2e; color:#fff; padding:10px 16px; border-radius:14px; font-size:14px; max-width:86vw; opacity:0; transition:opacity .2s; pointer-events:none; z-index:20; }
   #toast.show { opacity:1; } #toast.ok { background:#16163a; }
-  .modal { position:fixed; inset:0; background:#000000b0; display:none; align-items:center; justify-content:center; z-index:30; }
+  .modal { position:fixed; inset:0; background:#000000b8; display:none; align-items:center; justify-content:center; z-index:30; }
   .modal.show { display:flex; }
-  .card { background:#0e0e24; border:1px solid #7c4dff66; border-radius:18px; padding:18px; min-width:260px; max-width:86vw; box-shadow:0 0 30px #7c4dff33; }
+  .card { background:#101018; border:1px solid #ffffff30; border-radius:18px; padding:18px; min-width:260px; max-width:86vw; max-height:86vh; overflow:auto; }
   .card h3 { margin:0 0 12px; font-size:17px; }
-  .card button { font:inherit; color:#fff; background:#16163a; border:1px solid #ffffff22; border-radius:12px; padding:11px 14px; margin:4px 0; width:100%; text-align:left; }
+  .card button { font:inherit; color:#fff; background:#1c1c2c; border:1px solid #ffffff22; border-radius:12px; padding:11px 14px; margin:4px 0; width:100%; text-align:left; }
   .card button.pri { background:#7c4dff; border-color:#7c4dff; }
   .row { display:flex; gap:8px; } .row button { text-align:center; }
-  #empty { margin:auto; text-align:center; color:var(--muted); padding:30px; }
+  #empty { margin:auto; text-align:center; color:#aaa; padding:30px; }
 </style>
 </head>
 <body>
 <div id="pages"></div>
-<div id="bar"><div id="st"><span id="dot"></span><span id="stText">Connecting…</span></div><div id="dots"></div><div id="menuBtn">⋮</div></div>
+<div id="banner">Offline – reconnecting…</div>
+<span id="dot"></span><div id="gear">⚙</div><div id="dots"></div>
 <div id="toast"></div>
 <div class="modal" id="confirm"><div class="card"><h3 id="cTitle"></h3><div class="row"><button id="cNo">Cancel</button><button id="cYes" class="pri">Run</button></div></div></div>
 <div class="modal" id="menu"><div class="card"><h3>StreamDeck</h3><div id="profiles"></div><button id="mReconnect">Reconnect</button><button id="mReload">Reload layout</button><button id="mSettings">Phone settings / pairing</button><button id="mClose">Close</button></div></div>
@@ -59,59 +70,73 @@ const H = new URLSearchParams(location.hash.slice(1));
 const DEV = H.get('d') || '', TOK = H.get('t') || '';
 const $ = id => document.getElementById(id);
 const native = m => { try { Native.postMessage(m); } catch (e) {} };
-let icons = {}, layout = null, ws = null, status = {}, fails = 0, connected = false, nextId = 1, pending = {}, retry = null;
+let icons = {}, layout = null, ws = null, status = {}, fails = 0, connected = false, nextId = 1, pending = {}, retry = null, dotsT = null;
 let profileId = localStorage.getItem('profile') || null, curPage = 0;
 
-function hexToRgba(h, a) { const n = parseInt(h.replace('#', ''), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; }
+const hexToRgba = (h, a) => { const n = parseInt(h.replace('#', ''), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
 function toast(msg, ok) { const t = $('toast'); t.textContent = msg; t.className = 'show' + (ok ? ' ok' : ''); clearTimeout(toast.h); toast.h = setTimeout(() => t.className = '', ok ? 1400 : 3500); }
-function haptic() { native('h'); }
-
-function profile() {
-  if (!layout) return null;
-  return layout.profiles.find(p => p.id === profileId) || layout.profiles.find(p => p.id === layout.activeProfile) || layout.profiles[0];
-}
+const profile = () => layout && (layout.profiles.find(p => p.id === profileId) || layout.profiles.find(p => p.id === layout.activeProfile) || layout.profiles[0]);
 
 function setConn(state) {
-  const dot = $('dot'), tx = $('stText');
   connected = state === 'on';
-  dot.className = state === 'on' ? 'on' : state === 'mid' ? 'mid' : '';
-  tx.textContent = state === 'on' ? (status.pc || 'Connected') : state === 'mid' ? 'Connecting…' : 'Offline – reconnecting…';
+  $('dot').className = state === 'on' ? 'on' : state === 'mid' ? 'mid' : '';
+  $('banner').classList.toggle('show', state === 'off' && !!layout);
   document.querySelectorAll('.key:not(.empty)').forEach(k => k.classList.toggle('off', !connected));
 }
 
+// ---- live tiles -------------------------------------------------------------------------------
+function fmtWidget(w) {
+  const s = status, pct = v => (v == null ? null : Math.max(0, Math.min(100, v)));
+  if (w === 'clock') { const d = new Date(); return { v: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }; }
+  if (!connected) return { v: '—' };
+  if (w === 'cpu') return { v: `${s.cpu ?? 0}<small>%</small>`, bar: pct(s.cpu) };
+  if (w === 'ram') return { v: `${s.ram ?? 0}<small>%</small>`, bar: pct(s.ram) };
+  if (w === 'volume') return { v: `${s.volume ?? 0}<small>%</small>`, bar: pct(s.volume) };
+  if (w === 'brightness') return s.brightness < 0 ? { v: 'n/a' } : { v: `${s.brightness}<small>%</small>`, bar: pct(s.brightness) };
+  if (w === 'uptime') { const t = s.uptime || 0, d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60); return { v: (d ? d + 'd ' : '') + `${h}:${String(m).padStart(2, '0')}` }; }
+  if (w.startsWith('disk:')) { const dk = (s.disks || {})[w.slice(5)]; return dk ? { v: `${dk.free}<small> GB free</small>`, bar: pct(100 - dk.free * 100 / dk.total) } : { v: 'n/a' }; }
+  return { v: '' };
+}
+function refreshWidgets() {
+  document.querySelectorAll('.key[data-w]').forEach(k => { const r = fmtWidget(k.dataset.w); k.querySelector('.val').innerHTML = r.v; const b = k.querySelector('.bar i'); if (b) b.style.width = (r.bar ?? 0) + '%'; k.querySelector('.bar').style.display = r.bar == null ? 'none' : ''; });
+}
+setInterval(() => { if (document.querySelector('.key[data-w="clock"]')) refreshWidgets(); }, 10000);
+
+// ---- rendering --------------------------------------------------------------------------------
 function render() {
   const p = profile(), host = $('pages'), dots = $('dots');
+  document.body.classList.toggle('neon', !!layout && layout.style === 'neon');
+  document.body.style.backgroundImage = layout && layout.background ? `url(${layout.background})` : 'none';
   host.innerHTML = ''; dots.innerHTML = '';
   if (!p) { host.innerHTML = '<div id="empty">Waiting for the layout from your PC…</div>'; return; }
-  p.pages.forEach((pg, pi) => {
-    const el = document.createElement('div');
-    el.className = 'page';
-    el.style.gridTemplateColumns = `repeat(${pg.cols},minmax(0,1fr))`;
-    el.style.gridTemplateRows = `repeat(${pg.rows},minmax(0,1fr))`;
+  p.pages.forEach(pg => {
+    const el = document.createElement('div'); el.className = 'page';
+    el.style.gridTemplateColumns = `repeat(${pg.cols},minmax(0,1fr))`; el.style.gridTemplateRows = `repeat(${pg.rows},minmax(0,1fr))`;
     pg.slots.forEach(b => el.appendChild(b ? keyEl(b) : Object.assign(document.createElement('div'), { className: 'key empty' })));
-    host.appendChild(el);
-    const d = document.createElement('i'); dots.appendChild(d);
+    host.appendChild(el); dots.appendChild(document.createElement('i'));
   });
+  dots.style.display = p.pages.length > 1 ? 'flex' : 'none';
   curPage = Math.min(curPage, p.pages.length - 1);
   host.scrollTo({ left: curPage * host.clientWidth });
-  markDots(); refreshActive(); setConn(connected ? 'on' : 'off');
+  markDots(); refreshActive(); refreshWidgets(); setConn(connected ? 'on' : 'off');
 }
 
 function keyEl(b) {
-  const k = document.createElement('div');
-  k.className = 'key'; k._b = b;
-  k.style.background = `linear-gradient(180deg,${hexToRgba(b.color1, .30)},#080818) padding-box, linear-gradient(135deg,${b.color1},${b.color2}) border-box`;
-  k.style.boxShadow = `0 0 ${Math.round(4 + 22 * b.glow)}px ${hexToRgba(b.color1, .15 + .45 * b.glow)}`;
-  const accent = `color-mix(in srgb, ${b.color1} 65%, white)`;
-  let ic;
-  if (b.image) { ic = document.createElement('img'); ic.src = b.image; }
+  const k = document.createElement('div'); k.className = 'key'; k._b = b;
+  k.style.setProperty('--bc', hexToRgba(b.color1, .75)); k.style.setProperty('--ic', `color-mix(in srgb, ${b.color1} 70%, white)`);
+  k.style.setProperty('--c1', b.color1); k.style.setProperty('--c2', b.color2); k.style.setProperty('--t1', hexToRgba(b.color1, .3));
+  k.style.setProperty('--gl', Math.round(4 + 22 * b.glow) + 'px'); k.style.setProperty('--ga', hexToRgba(b.color1, .15 + .45 * b.glow));
+  if (b.widget) {
+    k.dataset.w = b.widget;
+    k.innerHTML = '<div class="val"></div><div class="bar"><i></i></div>';
+  } else if (b.image) { const i = document.createElement('img'); i.src = b.image; k.append(i); }
   else {
-    ic = document.createElement('div'); ic.className = 'ic'; ic.style.color = accent; ic.style.textShadow = `0 0 14px ${b.color1}`;
+    const ic = document.createElement('div'); ic.className = 'ic';
     if ((b.icon || '').startsWith('t:')) { ic.classList.add('txt'); ic.textContent = b.icon.slice(2); }
     else ic.textContent = icons[b.icon] ? String.fromCodePoint(icons[b.icon]) : (icons.bolt ? String.fromCodePoint(icons.bolt) : '?');
+    k.append(ic);
   }
-  const lb = document.createElement('div'); lb.className = 'lb'; lb.textContent = b.label;
-  k.append(ic, lb);
+  if (b.label) { const lb = document.createElement('div'); lb.className = 'lb'; lb.textContent = b.label; k.append(lb); }
   k.addEventListener('pointerdown', () => k.classList.add('down'));
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(e => k.addEventListener(e, () => k.classList.remove('down')));
   k.addEventListener('click', () => press(k, b));
@@ -124,17 +149,17 @@ function refreshActive() {
     k.classList.toggle('act', (t === 'mute_toggle' && status.muted === true) || (t === 'mic_toggle' && status.micMuted === true));
   });
 }
-
 function markDots() { [...$('dots').children].forEach((d, i) => d.classList.toggle('on', i === curPage)); }
 $('pages').addEventListener('scroll', () => {
   const h = $('pages'); const i = Math.round(h.scrollLeft / Math.max(1, h.clientWidth));
-  if (i !== curPage) { curPage = i; markDots(); }
+  if (i !== curPage) { curPage = i; markDots(); const d = $('dots'); d.classList.add('show'); clearTimeout(dotsT); dotsT = setTimeout(() => d.classList.remove('show'), 1200); }
 }, { passive: true });
 
-function send(o) { if (ws && ws.readyState === 1) { ws.send(JSON.stringify(o)); return true; } return false; }
+const send = o => { if (ws && ws.readyState === 1) { ws.send(JSON.stringify(o)); return true; } return false; };
 
 function press(k, b) {
-  haptic();
+  native('h');
+  if (!b.action || b.action.type === 'none') return;
   if (!connected) { toast('Not connected to the PC'); return; }
   const run = () => {
     const id = nextId++;
@@ -142,9 +167,8 @@ function press(k, b) {
     pending[id] = r => { if (!r.ok) toast(r.error || 'Failed'); else if (r.message) toast(r.message, true); };
     send({ t: 'action', id, action: b.action });
   };
-  if (b.confirm) ask(`${b.label}?`, run); else run();
+  if (b.confirm) ask(`${b.label || 'Run this'}?`, run); else run();
 }
-
 function ask(title, yes) {
   $('cTitle').textContent = title; $('confirm').classList.add('show');
   $('cNo').onclick = () => $('confirm').classList.remove('show');
@@ -156,35 +180,27 @@ function setLayout(l, cache) {
   if (cache !== false) try { localStorage.setItem('layout', JSON.stringify(l)); } catch (e) {}
   render();
 }
-
 function onMsg(m) {
   if (m.id && pending[m.id]) { const f = pending[m.id]; delete pending[m.id]; f(m); return; }
   switch (m.t) {
     case 'auth_ok': fails = 0; setConn('on'); send({ t: 'layout_get', id: 0 }); break;
     case 'auth_fail': native('unpaired'); break;
-    case 'status': status = m; refreshActive(); if (connected) $('stText').textContent = m.pc || 'Connected'; break;
+    case 'status': status = m; refreshActive(); refreshWidgets(); break;
     case 'layout': setLayout(m.layout); break;
   }
 }
-
 function connect() {
-  clearTimeout(retry);
-  setConn('mid');
+  clearTimeout(retry); setConn('mid');
   try { ws = new WebSocket(`ws://${location.host}/ws`); } catch (e) { return later(); }
   ws.onopen = () => ws.send(JSON.stringify({ t: 'auth', deviceId: DEV, token: TOK }));
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (x) {} };
   ws.onclose = () => { setConn('off'); later(); };
   ws.onerror = () => {};
 }
-function later() {
-  fails++;
-  if (fails >= 6) { native('offline'); fails = 3; }   // PC address may have changed: let the app search again
-  retry = setTimeout(connect, 1500);
-}
+function later() { fails++; if (fails >= 6) { native('offline'); fails = 3; } retry = setTimeout(connect, 1500); }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !connected) { fails = 0; connect(); } });
 
-// menu
-$('menuBtn').onclick = () => {
+$('gear').onclick = () => {
   const box = $('profiles'); box.innerHTML = '';
   if (layout) layout.profiles.forEach(p => {
     const b = document.createElement('button'); b.textContent = (p.id === (profile() || {}).id ? '✓  ' : '     ') + p.name;
@@ -201,7 +217,7 @@ $('mSettings').onclick = () => { $('menu').classList.remove('show'); native('set
 (async function boot() {
   try { icons = await (await fetch('/assets/icons.json')).json(); } catch (e) {}
   try { await document.fonts.load('24px MI'); } catch (e) {}
-  if (icons.more_vert) $('menuBtn').textContent = String.fromCodePoint(icons.more_vert);
+  if (icons.settings) $('gear').textContent = String.fromCodePoint(icons.settings);
   try { const c = localStorage.getItem('layout'); if (c) setLayout(JSON.parse(c), false); } catch (e) {}
   if (!layout) render();
   connect();

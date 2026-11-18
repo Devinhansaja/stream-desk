@@ -417,6 +417,10 @@ public sealed class HostServer : IDisposable
             return new JsonObject
             {
                 ["t"] = "status",
+                ["cpu"] = SystemStats.Cpu(),
+                ["ram"] = SystemStats.Ram(),
+                ["uptime"] = SystemStats.UptimeSeconds(),
+                ["disks"] = SystemStats.Disks(),
                 ["pc"] = PcName,
                 ["volume"] = vol,
                 ["muted"] = muted,

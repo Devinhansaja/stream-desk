@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 namespace StreamDeckHost.Core;
 
 /// <summary>
-/// The deck layout (profiles → pages → buttons) lives on the PC and is edited only in the PC editor.
+/// The deck layout (profiles â†’ pages â†’ buttons) lives on the PC and is edited only in the PC editor.
 /// Phones just render it. Button actions are stored in the same flat wire format the executor runs.
 /// </summary>
 public sealed class LayoutStore
@@ -44,7 +44,7 @@ public sealed class LayoutStore
             {
                 if (pg is not JsonObject pgo) return "bad page";
                 int cols = pgo["cols"]?.GetValue<int>() ?? 0, rows = pgo["rows"]?.GetValue<int>() ?? 0;
-                if (cols is < 1 or > 10 || rows is < 1 or > 10) return "page size must be 1-10";
+                if (cols is < 1 or > 12 || rows is < 1 or > 12) return "page size must be 1-12";
                 if (pgo["slots"] is not JsonArray slots || slots.Count != cols * rows) return "slots must equal cols*rows";
             }
         }
@@ -95,29 +95,55 @@ public sealed class LayoutStore
         return new JsonObject { ["id"] = Guid.NewGuid().ToString("N")[..12], ["name"] = name, ["cols"] = cols, ["rows"] = rows, ["slots"] = slots };
     }
 
+    static JsonObject Tile(string label, string widget, string color)
+    {
+        var b = Btn(label, "bolt", color, color, A("none"));
+        b["widget"] = widget;
+        return b;
+    }
+
+    static JsonObject Hk(string label, string icon, string c1, string c2, string keys, bool confirm = false) =>
+        Btn(label, icon, c1, c2, A("hotkey", ("keys", keys)), confirm);
+
+    /// <summary>First-run layout: 6x4 = 24 keys per page and several pages. All of it is editable.</summary>
     public static JsonObject Default()
     {
-        var page1 = Page("Home", 4, 4,
+        var home = Page("Home", 6, 4,
             Btn("Volume Up", "volume_up", "#1e90ff", "#00e5ff", A("volume_up", ("step", 5))),
             Btn("Volume Down", "volume_down", "#1e90ff", "#00e5ff", A("volume_down", ("step", 5))),
             Btn("Mute", "volume_off", "#ff1744", "#b71c1c", A("mute_toggle")),
             Btn("Mic Mute", "mic_off", "#7c4dff", "#d500f9", A("mic_toggle")),
             Btn("Brightness +", "wb_sunny", "#ffc400", "#ff6d00", A("brightness_up", ("step", 10))),
             Btn("Brightness -", "brightness_low", "#ffc400", "#8d6e00", A("brightness_down", ("step", 10))),
+            Btn("Play / Pause", "play_arrow", "#1de9b6", "#00897b", A("media", ("key", "playpause"))),
+            Btn("Previous", "skip_previous", "#1de9b6", "#00897b", A("media", ("key", "prev"))),
+            Btn("Next", "skip_next", "#1de9b6", "#00897b", A("media", ("key", "next"))),
             Btn("Screenshot", "photo_camera", "#7c4dff", "#1e90ff", A("screenshot")),
-            Btn("Lock PC", "lock", "#1e90ff", "#0d47a1", A("lock")),
-            Btn("Shutdown", "power_settings_new", "#00e676", "#1b5e20", A("shutdown"), true),
-            Btn("Restart", "restart_alt", "#00e5ff", "#0277bd", A("restart"), true),
-            Btn("Open Chrome", "public", "#7c4dff", "#1e90ff", A("url", ("url", "https://www.google.com"))),
-            Btn("Task Manager", "speed", "#b0bec5", "#455a64", A("hotkey", ("keys", "ctrl+shift+esc"))),
+            Hk("Snip", "content_cut", "#7c4dff", "#1e90ff", "win+shift+s"),
             Btn("Change BG", "image", "#1e90ff", "#00e676", A("wallpaper", ("mode", "next"))),
-            Btn("Play / Pause", "play_arrow", "#ff1744", "#b71c1c", A("media", ("key", "playpause"))),
-            Btn("Show Desktop", "desktop_windows", "#b0bec5", "#455a64", A("hotkey", ("keys", "win+d"))));
+            Hk("Desktop", "desktop_windows", "#b0bec5", "#455a64", "win+d"),
+            Hk("Task Manager", "speed", "#b0bec5", "#455a64", "ctrl+shift+esc"),
+            Hk("Explorer", "folder", "#ffc400", "#ff6d00", "win+e"),
+            Hk("Settings", "settings", "#b0bec5", "#455a64", "win+i"),
+            Btn("Open Chrome", "public", "#7c4dff", "#1e90ff", A("url", ("url", "https://www.google.com"))),
+            Btn("YouTube", "smart_display", "#ff1744", "#b71c1c", A("url", ("url", "https://www.youtube.com"))),
+            Btn("Notepad", "edit_note", "#1de9b6", "#00897b", A("launch", ("target", "notepad.exe"))),
+            Btn("Calculator", "calculate", "#ff6d00", "#bf360c", A("launch", ("target", "calc.exe"))),
+            Btn("Lock PC", "lock", "#1e90ff", "#0d47a1", A("lock")),
+            Btn("Sleep", "bedtime", "#7c4dff", "#311b92", A("sleep"), true),
+            Btn("Restart", "restart_alt", "#00e5ff", "#0277bd", A("restart"), true),
+            Btn("Shutdown", "power_settings_new", "#00e676", "#1b5e20", A("shutdown"), true));
+
+        var stats = Page("Stats", 6, 4,
+            Tile("CPU", "cpu", "#22e58b"), Tile("RAM", "ram", "#1e90ff"), Tile("C:", "disk:C", "#ffc400"),
+            Tile("Uptime", "uptime", "#7c4dff"), Tile("Clock", "clock", "#ffffff"), Tile("Volume", "volume", "#00e5ff"),
+            Tile("Brightness", "brightness", "#ff6d00"));
+
         var prof = new JsonObject
         {
             ["id"] = "default", ["name"] = "Default",
-            ["pages"] = new JsonArray(page1, Page("Games", 4, 4), Page("Page 3", 4, 4)),
+            ["pages"] = new JsonArray(home, stats, Page("Apps", 6, 4), Page("Games", 6, 4), Page("Streaming", 6, 4), Page("Page 6", 6, 4)),
         };
-        return new JsonObject { ["version"] = 1, ["activeProfile"] = "default", ["profiles"] = new JsonArray(prof) };
+        return new JsonObject { ["version"] = 1, ["style"] = "flat", ["background"] = null, ["activeProfile"] = "default", ["profiles"] = new JsonArray(prof) };
     }
 }

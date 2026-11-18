@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Drawing.Drawing2D;
 using QRCoder;
+using Microsoft.Web.WebView2.WinForms;
 using StreamDeckHost.Core;
 
 namespace StreamDeckHost.UI;
@@ -47,8 +48,8 @@ public sealed class MainForm : Form
         this.startHidden = startHidden;
 
         Text = "StreamDeck Host";
-        Size = new Size(980, 640);
-        MinimumSize = new Size(900, 580);
+        Size = new Size(1320, 820);
+        MinimumSize = new Size(1000, 640);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Bg;
         ForeColor = Fg;
@@ -63,7 +64,7 @@ public sealed class MainForm : Form
         refresh.Tick += (_, _) => RefreshAll();
         refresh.Start();
         RefreshAll();
-        ShowPage("Pairing");
+        ShowPage(store.Data.Devices.Count > 0 ? "Editor" : "Pairing");
 
         if (store.Data.AutoUsb) StartUsbLoop();
         HandleCreated += (_, _) => _ = Task.Run(StartupTasksAsync);
@@ -80,7 +81,7 @@ public sealed class MainForm : Form
     {
         var header = new Panel { Dock = DockStyle.Top, Height = 78, BackColor = Panel };
         var title = new Label { Text = "StreamDeck", Font = new Font("Segoe UI", 20f, FontStyle.Bold), ForeColor = Fg, AutoSize = true, Location = new Point(20, 8) };
-        var sub = new Label { Text = "Host Â· Windows companion", Font = new Font("Segoe UI", 10.5f), ForeColor = Purple, AutoSize = true, Location = new Point(23, 46) };
+        var sub = new Label { Text = "Host · Windows companion", Font = new Font("Segoe UI", 10.5f), ForeColor = Purple, AutoSize = true, Location = new Point(23, 46) };
         statusLabel.AutoSize = true; statusLabel.Font = new Font("Segoe UI", 11f, FontStyle.Bold); statusLabel.Location = new Point(360, 16);
         connectedLabel.AutoSize = true; connectedLabel.ForeColor = Muted; connectedLabel.Location = new Point(360, 44);
         header.Controls.AddRange(new Control[] { title, sub, statusLabel, connectedLabel });
@@ -91,7 +92,7 @@ public sealed class MainForm : Form
         };
 
         var nav = new Panel { Dock = DockStyle.Left, Width = 200, BackColor = Panel, Padding = new Padding(12, 16, 12, 12) };
-        string[] names = { "Pairing", "Devices", "Activity", "Settings" };
+        string[] names = { "Editor", "Pairing", "Devices", "Activity", "Settings" };
         for (int i = names.Length - 1; i >= 0; i--)
         {
             var name = names[i];
@@ -106,7 +107,8 @@ public sealed class MainForm : Form
             navButtons[name] = b;
         }
 
-        var content = new Panel { Dock = DockStyle.Fill, BackColor = Bg, Padding = new Padding(24) };
+        var content = new Panel { Dock = DockStyle.Fill, BackColor = Bg, Padding = new Padding(12) };
+        pages["Editor"] = BuildEditorPage();
         pages["Pairing"] = BuildPairingPage();
         pages["Devices"] = BuildDevicesPage();
         pages["Activity"] = BuildActivityPage();
@@ -120,6 +122,7 @@ public sealed class MainForm : Form
 
     void ShowPage(string name)
     {
+        if (name == "Editor") _ = EnsureEditorAsync();
         foreach (var (k, p) in pages) p.Visible = k == name;
         foreach (var (k, b) in navButtons) b.BackColor = k == name ? Purple : Panel;
     }
@@ -145,7 +148,7 @@ public sealed class MainForm : Form
         addrLabel.Location = new Point(310, 80); addrLabel.AutoSize = true; addrLabel.ForeColor = Fg;
         p.Controls.Add(addrLabel);
         p.Controls.Add(Btn("New pairing code", 310, 300, 170, Purple, (_, _) => { server.RotateSecret(); RefreshAll(); }));
-        p.Controls.Add(Btn("Open button editor", 490, 300, 190, Blue, (_, _) => OpenEditor()));
+        p.Controls.Add(Btn("Open button editor", 490, 300, 190, Blue, (_, _) => ShowPage("Editor")));
         fwLabel.Location = new Point(310, 348); fwLabel.AutoSize = true; p.Controls.Add(fwLabel);
         p.Controls.Add(Btn("Fix firewall", 310, 374, 170, Panel2, (_, _) => FixFirewall(true)));
         p.Controls.Add(H("The code is single-use and expires after 10 minutes. Phones and PC must be on the same Wi-Fi,\nor connected with a USB cable (enable USB debugging; see Settings).", 0, 420, 9.5f, Muted));
@@ -263,7 +266,7 @@ public sealed class MainForm : Form
     void RefreshAll()
     {
         int n = server.ConnectedCount;
-        statusLabel.Text = "â— Running on port " + server.Port;
+        statusLabel.Text = "● Running on port " + server.Port;
         statusLabel.ForeColor = Green;
         connectedLabel.Text = n == 0 ? "No phone connected" : $"{n} phone{(n == 1 ? "" : "s")} connected";
 
@@ -330,7 +333,45 @@ public sealed class MainForm : Form
     bool usbLoopRunning;
 
     // ------------------------------------------------------------ editor / firewall / updates
-    void OpenEditor()
+    // The editor is a web page served by this app; show it inside the window (WebView2), or fall back to the browser.
+    readonly WebView2 editorView = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.FromArgb(7, 7, 15) };
+    readonly Label editorMsg = new() { AutoSize = true, ForeColor = Muted, Location = new Point(20, 20) };
+    bool editorStarted;
+
+    Control BuildEditorPage()
+    {
+        var p = new Panel { Padding = new Padding(0) };
+        p.Controls.Add(editorView);
+        p.Controls.Add(editorMsg);
+        editorMsg.BringToFront();
+        return p;
+    }
+
+    async Task EnsureEditorAsync()
+    {
+        if (editorStarted) return;
+        editorStarted = true;
+        try
+        {
+            var env = await Microsoft.Web.WebView2.Core.CoreWebView2Environment.CreateAsync(null, Path.Combine(AppPaths.Root, "webview2"));
+            await editorView.EnsureCoreWebView2Async(env);
+            editorView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+            editorView.CoreWebView2.NewWindowRequested += (_, e) => e.Handled = true;
+            editorView.Source = new Uri($"http://localhost:{server.Port}/editor?embedded=1");
+            editorMsg.Visible = false;
+        }
+        catch (Exception e)
+        {
+            editorMsg.Text = "The built-in editor needs the Microsoft Edge WebView2 runtime (" + e.Message + ").\nOpening the editor in your browser instead.";
+            editorMsg.Visible = true;
+            editorView.Visible = false;
+            OpenEditorInBrowser();
+        }
+    }
+
+    void OpenEditor() => ShowWindow("Editor");
+
+    void OpenEditorInBrowser()
     {
         try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo($"http://localhost:{server.Port}/editor") { UseShellExecute = true }); }
         catch (Exception e) { MessageBox.Show("Could not open the browser: " + e.Message); }
