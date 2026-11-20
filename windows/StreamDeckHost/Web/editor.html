@@ -546,15 +546,15 @@ function drawPanel() {
     det.append(tabs, eg); showGroup('Controls'); p.append(det); }
 
   // ---- find an icon online: Iconify libraries + Google website icon (needs internet on the PC) -----------------------
-  const wq = el('input', { type: 'text', placeholder: 'Search online (discord, game, fire, rocket…)', value: b.label || '' });
+  const wq = el('input', { type: 'text', placeholder: 'Search icons (game, fire…) or type a website (discord.com)', value: b.label || '' });
   const wset = el('select'); [['', 'All icon sets'], ['logos,skill-icons,devicon', 'Brand logos (colorful)'], ['fluent-emoji', '3D emoji'], ['fluent-emoji-flat,noto,twemoji,openmoji', 'Flat emoji'], ['flat-color-icons', 'Colorful icons'], ['simple-icons', 'Brand icons (single color)'], ['game-icons', 'Gaming icons (single color)'], ['mdi,material-symbols', 'Material (single color)']].forEach(([v, t]) => wset.append(el('option', { value: v, textContent: t })));
   const wr = el('div', { className: 'icons', style: 'max-height:240px' }), wmsg = el('div', { className: 'hint' });
   const COLORED = new Set(['logos', 'skill-icons', 'devicon', 'vscode-icons', 'fluent-emoji', 'fluent-emoji-flat', 'noto', 'twemoji', 'openmoji', 'emojione', 'flat-color-icons', 'streamline-emojis', 'noto-v1', 'icons8']);
   const iconUrl = (n, h) => { const [pre, name] = n.split(':'); return `https://api.iconify.design/${pre}/${name}.svg?height=${h}` + (COLORED.has(pre) ? '' : '&color=%23ffffff'); };
-  const setImageFrom = async (url, viaHost) => {
+  const setImageFrom = async (url, viaHost, notFound) => {
     wmsg.textContent = 'Adding icon…';
     try {
-      const r = await fetch(viaHost ? '/api/fetch-image?url=' + encodeURIComponent(url) : url); if (!r.ok) throw new Error('HTTP ' + r.status);
+      const r = await fetch(viaHost ? '/api/fetch-image?url=' + encodeURIComponent(url) : url); if (r.status === 404) throw new Error(notFound || 'that icon does not exist, pick another one'); if (!r.ok) throw new Error('HTTP ' + r.status);
       const blob = await r.blob(); const src = URL.createObjectURL(blob.type ? blob : new Blob([blob], { type: 'image/svg+xml' }));
       const im = new Image(); await new Promise((ok, no) => { im.onload = ok; im.onerror = () => no(new Error('could not read image')); im.src = src; });
       const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
@@ -579,9 +579,10 @@ function drawPanel() {
     } catch (e) { wmsg.textContent = 'Search failed (is the PC online?): ' + e.message; }
   };
   const site = async () => {
-    let d = (wq.value || '').trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0]; if (!d) return;
+    let d = (wq.value || '').trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0].replace(/\s+/g, ''); if (!d) { wmsg.textContent = 'Type a website first, like discord.com'; return; }
     if (!d.includes('.')) d += '.com';
-    setImageFrom(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(d)}&sz=128`, true);
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d)) { wmsg.textContent = 'That is not a website name. Type one like discord.com'; return; }
+    setImageFrom(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(d)}&sz=128`, true, `No website icon found for ${d}. Type the real site (for example discord.com), or use "Search icons" instead.`);
   };
   wq.onkeydown = e => { if (e.key === 'Enter') searchOnline(); };
   const fpath = el('input', { type: 'text', placeholder: 'C:\\Games\\MyGame\\game.exe  (program, shortcut or any file)', value: b.action && b.action.type === 'launch' ? (b.action.target || '') : '' });
