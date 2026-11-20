@@ -146,7 +146,9 @@
         <div class="row"><input type="number" id="cols" min="1" max="12"><span style="flex:0">×</span><input type="number" id="rows" min="1" max="12"></div>
         <div class="presets" id="sizePresets"></div>
         <button id="sizeAll" class="wide">Apply this size to all pages</button>
-        <div class="grid2" style="margin-top:8px"><button id="pgRen" title="Rename this page">✏️ Rename</button><button id="pgDel" class="danger" title="Delete this page">🗑 Delete</button></div>
+        <label class="f" style="margin-top:8px">Open this page by itself when this program is in front</label>
+        <input type="text" id="autoApp" placeholder="e.g. photoshop, afterfx (program names, comma separated)" title="Program name as shown in Task Manager, without .exe">
+        <div class="grid2" style="margin-top:8px"><button id="pgRen"title="Rename this page">✏️ Rename</button><button id="pgDel" class="danger" title="Delete this page">🗑 Delete</button></div>
       </div></details>
 
       <details class="sec" data-k="look"><summary><i>🎨</i>Keys &amp; look</summary><div class="secbody">
@@ -384,6 +386,7 @@ const WKIND = {
   youtube: { icon: '▶',  name: 'YouTube video',    defaults: { url: '' }, about: 'Plays a YouTube video or playlist on the phone itself (the phone needs internet). Plays only while this page is on screen.' },
   discord: { icon: '🎮', name: 'Discord call', defaults: { autoOpen: true }, about: 'Shows your Discord voice call on the phone: channel, who is in it, who is speaking, plus Mute / Deafen / Leave buttons. Set it up once in StreamDeck Host > Discord (needs a free Discord application). Discord must be running on the PC.' },
   obs:     { icon: '🎬', name: 'OBS control center', about: 'Scenes, Go live / Record / Virtual camera and the audio mixer for OBS Studio. Turn on OBS WebSocket once (OBS: Tools > WebSocket Server Settings), then enter the password in StreamDeck Host > OBS.' },
+  gamestats: { icon: '📊', name: 'Game stats (FPS, RAM…)', about: 'While you play: FPS, frame time, 1% low, CPU, GPU, RAM, VRAM, GPU temperature and power. FPS needs a one-time Windows permission (tap "Turn on FPS" on the phone or the Game tab on the PC), or MSI Afterburner running.' },
   screen:  { icon: '🖥', name: 'PC screen (2nd display)', about: 'Mirrors your PC screen on the phone. Tap = click, long-press = right-click, drag = move/drag. Windows cannot make a phone a true extended monitor without a driver, so this shows the main monitor.' },
 };
 function drawWidgetPage(pg, g, withPanel) {
@@ -420,7 +423,7 @@ function draw(panel = true) {
   { const s = el('select', { className: 'tab', title: 'Add a widget page (clock, lyrics, YouTube, PC screen)', style: 'width:auto' }, el('option', { value: '', textContent: '＋ Widget page ▾' }), Object.entries(WKIND).map(([k, v]) => el('option', { value: k, textContent: v.icon + '  ' + v.name })));
     s.onchange = () => { if (!s.value) return; const k = s.value, np = newPage(WKIND[k].name, 1, 1); np.kind = k; Object.assign(np, WKIND[k].defaults || {}); prof().pages.push(np); gi = prof().pages.length - 1; sel = -1; changed(); };
     tabs.append(s); }
-  const pg = page(); $('cols').value = pg.cols; $('rows').value = pg.rows; $('styleSel').value = L.style === 'neon' ? 'neon' : 'flat';
+  const pg = page(); $('cols').value = pg.cols; $('rows').value = pg.rows; if (document.activeElement !== $('autoApp')) $('autoApp').value = pg.autoApp || ''; $('styleSel').value = L.style === 'neon' ? 'neon' : 'flat';
   const bgKey = JSON.stringify(L.background || null);
   if (bgKey !== window.lastBg) { window.lastBg = bgKey; applyBg($('bgLayer'), L.background, L.bgDim); } else setBgDim($('bgLayer'), L.bgDim);
   $('iconStyle').value = L.iconStyle === 'emoji' ? 'emoji' : 'classic';
@@ -679,6 +682,7 @@ $('bgFile').onchange = async e => {
 $('pgDel').onclick = () => { if (prof().pages.length < 2) return alert('A profile needs at least one page.'); if (!confirm('Delete page "' + page().name + '"?')) return; prof().pages.splice(gi, 1); gi = 0; sel = -1; changed(); };
 const sizeChange = () => { const c = Math.max(1, Math.min(12, +$('cols').value || 1)), r = Math.max(1, Math.min(12, +$('rows').value || 1)); resizePage(page(), c, r); sel = -1; changed(); };
 [[4,3],[5,3],[4,4],[6,4],[8,4],[8,6]].forEach(([c, r]) => $('sizePresets').append(el('button', { textContent: `${c}×${r}`, title: `${c * r} keys`, onclick: () => { resizePage(page(), c, r); sel = -1; changed(); } })));
+$('autoApp').oninput = e => { const v = e.target.value.trim(); if (v) page().autoApp = v; else delete page().autoApp; changed(true); };
 $('sizeAll').onclick = () => { const p = page(); prof().pages.forEach(pg => { if (pg !== p) resizePage(pg, p.cols, p.rows); }); changed(); };$('cols').onchange = sizeChange; $('rows').onchange = sizeChange;
 
 // ------------------------------------------------------------------ polish: toolbox icons, toast, shortcuts, live phone preview

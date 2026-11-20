@@ -27,6 +27,7 @@ public sealed class HostServer : IDisposable
         public readonly SemaphoreSlim SendLock = new(1, 1);
         public volatile bool Media;     // viewing a lyrics / now-playing page
         public volatile bool Screen;    // viewing the shared PC screen
+        public volatile bool Stats;     // viewing the game stats page
         public string LyricsKey = "";   // lyrics this client already has
     }
 
@@ -36,6 +37,8 @@ public sealed class HostServer : IDisposable
     public ActionExecutor Exec => exec;
     public DiscordRpc Discord { get; } = new();
     public ObsRpc Obs { get; } = new();
+    public GameStats Game { get; } = new();
+    string lastFg = "";
     readonly ConcurrentDictionary<Guid, Client> clients = new();
     readonly ConcurrentDictionary<string, (int fails, DateTime until)> failures = new();
     readonly CancellationTokenSource cts = new();
@@ -67,6 +70,8 @@ public sealed class HostServer : IDisposable
         Discord.Changed += () => _ = BroadcastDiscord();
         exec.Obs = Obs;
         Obs.Changed += () => _ = BroadcastObs();
+        Game.SubCount = () => clients.Values.Count(x => x.Device != null && x.Stats);
+        Game.Changed += () => _ = BroadcastGame();
         Tunnel = new Tunnel(store.Data.Port);
         Tunnel.Changed += () => { WriteDevPairing(); Changed?.Invoke(); };
     }
@@ -191,6 +196,8 @@ public sealed class HostServer : IDisposable
         _ = Task.Run(StatusLoop);
         _ = Task.Run(MediaLoop);
         _ = Task.Run(ScreenLoop);
+        Game.Start();
+        _ = Task.Run(ForegroundLoop);
         WriteDevPairing();
     }
 
@@ -199,6 +206,7 @@ public sealed class HostServer : IDisposable
         cts.Cancel();
         Discord.Dispose();
         Obs.Dispose();
+        Game.Dispose();
         Tunnel.Dispose();
         try { udp?.Close(); } catch { }
         try { app?.StopAsync(TimeSpan.FromSeconds(1)).Wait(2000); } catch { }
@@ -453,6 +461,19 @@ public sealed class HostServer : IDisposable
                 c.Screen = m["on"] is JsonValue sv && sv.TryGetValue<bool>(out var son) && son;
                 break;
 
+            case "stats_sub":
+                c.Stats = m["on"] is JsonValue stv && stv.TryGetValue<bool>(out var ston) && ston;
+                if (c.Stats) await Send(c, Game.Snapshot());
+                break;
+
+            case "stats_helper":
+                Game.Fps.StartHelper();
+                break;
+
+            case "fg_get":
+                await Send(c, new JsonObject { ["t"] = "fg", ["app"] = lastFg });
+                break;
+
             case "pointer":
             {
                 double Num(string k) => m[k] is JsonValue v && v.TryGetValue<double>(out var d) ? d : 0;
@@ -640,6 +661,38 @@ public sealed class HostServer : IDisposable
         while (!cts.IsCancellationRequested)
         {
             try { await Task.Delay(1000, cts.Token); await BroadcastStatus(false); }
+            catch (OperationCanceledException) { break; }
+            catch { }
+        }
+    }
+
+    async Task BroadcastGame()
+    {
+        var snap = Game.Snapshot();
+        foreach (var c in clients.Values.Where(x => x.Device != null && x.Stats))
+            await Send(c, JsonNode.Parse(snap.ToJsonString())!.AsObject());
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+
+    /// <summary>Tells phones which program is in front, so a page can open by itself (for example Photoshop controls).</summary>
+    async Task ForegroundLoop()
+    {
+        while (!cts.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(800, cts.Token);
+                if (ConnectedCount == 0) continue;
+                string name = "";
+                GetWindowThreadProcessId(GetForegroundWindow(), out var pid);
+                if (pid != 0) { try { using var p = System.Diagnostics.Process.GetProcessById((int)pid); name = p.ProcessName.ToLowerInvariant(); } catch { } }
+                if (name == "streamdeckhost" || name == "" || name == "applicationframehost" || name == lastFg) continue;   // keep the last real app while our own window is in front
+                lastFg = name;
+                var msg = new JsonObject { ["t"] = "fg", ["app"] = name };
+                foreach (var c in clients.Values.Where(x => x.Device != null)) await Send(c, JsonNode.Parse(msg.ToJsonString())!.AsObject());
+            }
             catch (OperationCanceledException) { break; }
             catch { }
         }

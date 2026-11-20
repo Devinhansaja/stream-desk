@@ -9,6 +9,10 @@ static class Program
     [STAThread]
     static void Main(string[] args)
     {
+        // Elevated helper that counts game frames (started by the host, see FpsHelper).
+        var fi = Array.IndexOf(args, "--fps-helper");
+        if (fi >= 0 && fi + 2 < args.Length && int.TryParse(args[fi + 2], out var fpid)) { Environment.ExitCode = FpsHelper.Run(args[fi + 1], fpid); return; }
+
         // After a self-update the old process is still shutting down: wait for it, then take the single-instance lock.
         var wi = Array.IndexOf(args, "--wait-pid");
         if (wi >= 0 && wi + 1 < args.Length && int.TryParse(args[wi + 1], out var pid))

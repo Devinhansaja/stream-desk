@@ -101,7 +101,7 @@ public sealed class MainForm : Form
         var nav = new Panel { Dock = DockStyle.Left, Width = 196, BackColor = Panel, Padding = new Padding(10, 14, 10, 10) };
         var ver = new Label { Text = "v" + Updater.Current.ToString(3), Dock = DockStyle.Bottom, Height = 30, ForeColor = Muted, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(14, 0, 0, 0), Font = new Font("Segoe UI", 9f) };
         nav.Controls.Add(ver);
-        (string name, string glyph)[] items = { ("Editor", "\uE70F"), ("Pairing", "\uE8EA"), ("Discord", "\uE8F2"), ("OBS", "\uE714"), ("Internet", "\uE774"), ("Devices", "\uE772"), ("Activity", "\uE81C"), ("Settings", "\uE713") };
+        (string name, string glyph)[] items = { ("Editor", "\uE70F"), ("Pairing", "\uE8EA"), ("Discord", "\uE8F2"), ("OBS", "\uE714"), ("Game", "\uE7FC"), ("Internet", "\uE774"), ("Devices", "\uE772"), ("Activity", "\uE81C"), ("Settings", "\uE713") };
         for (int i = items.Length - 1; i >= 0; i--)
         {
             var name = items[i].name;
@@ -115,6 +115,8 @@ public sealed class MainForm : Form
         pages["Pairing"] = BuildPairingPage();
         pages["Discord"] = BuildDiscordPage();
         pages["OBS"] = BuildObsPage();
+        pages["Game"] = BuildGamePage();
+        server.Game.Fps.Changed += () => { try { BeginInvoke(new Action(RefreshAll)); } catch { } };
         pages["Internet"] = BuildInternetPage();
         pages["Devices"] = BuildDevicesPage();
         pages["Activity"] = BuildActivityPage();
@@ -236,6 +238,20 @@ public sealed class MainForm : Form
         obsLabel.Location = new Point(0, 296); obsLabel.AutoSize = true; obsLabel.ForeColor = Fg;
         p.Controls.Add(obsLabel);
         p.Controls.Add(H("The password is stored encrypted for your Windows account. The phone page is in the default layout (+ Widget page > OBS control center).", 0, 360, 9.5f, Muted));
+        return p;
+    }
+
+    readonly Label gameLabel = new();
+    Control BuildGamePage()
+    {
+        var p = new Panel();
+        p.Controls.Add(H("Game stats", 0, 0));
+        p.Controls.Add(H("Shows FPS, frame time, CPU, GPU, RAM, VRAM and GPU temperature on the phone while you play.\nOpen the \"Game stats\" page on the phone (it is in the default layout, or + Widget page > Game stats).", 0, 36, 10f, Muted));
+        p.Controls.Add(H("CPU, GPU, RAM and VRAM work right away. FPS needs one permission: Windows only lets an administrator count game frames.\nPress the button below, accept the Windows prompt once per session. Nothing else runs as administrator and only frame timing is read.\n(If MSI Afterburner / RivaTuner is running, its FPS is used automatically and this is not needed.)", 0, 92, 10f));
+        p.Controls.Add(Btn("Turn on FPS (needs admin)", 0, 190, 240, Purple, (_, _) => server.Game.Fps.StartHelper()));
+        p.Controls.Add(Btn("Turn off", 256, 190, 120, Panel2, (_, _) => server.Game.Fps.StopHelper()));
+        gameLabel.Location = new Point(0, 246); gameLabel.AutoSize = true; gameLabel.ForeColor = Fg;
+        p.Controls.Add(gameLabel);
         return p;
     }
 
@@ -384,6 +400,7 @@ public sealed class MainForm : Form
         statusLabel.Text = "● Running on port " + server.Port;
         statusLabel.ForeColor = Green;
         obsLabel.Text = "Status: " + server.Obs.StatusText + (server.Obs.Phase == "ok" ? $"\nScene: {server.Obs.Scene}   Streaming: {server.Obs.Streaming}   Recording: {server.Obs.Recording}" : "");
+        gameLabel.Text = "FPS helper: " + server.Game.Fps.HelperStatus + "\nGPU data: " + (server.Game.GpuSource.Length > 0 ? server.Game.GpuSource : "waiting for a phone to open the Game stats page");
         discordLabel.Text = "Status: " + server.Discord.StatusText + (server.Discord.InCall ? $"\nIn call: {server.Discord.Channel}  (mic muted: {server.Discord.SelfMute}, deafened: {server.Discord.SelfDeaf})" : "");
         tunnelLabel.Text = "Status: " + server.Tunnel.Status + (server.Tunnel.Url != null ? "\nAddress: " + server.Tunnel.Url : "");
         connectedLabel.Text = n == 0 ? "No phone connected" : $"{n} phone{(n == 1 ? "" : "s")} connected";

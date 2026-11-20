@@ -110,11 +110,49 @@ public sealed class LayoutStore
         return new JsonObject { ["id"] = Guid.NewGuid().ToString("N")[..12], ["name"] = "OBS", ["cols"] = 1, ["rows"] = 1, ["slots"] = slots, ["kind"] = "obs" };
     }
 
+    /// <summary>Full-page "Game stats" widget (FPS, CPU, GPU, RAM, VRAM, temperature).</summary>
+    public static JsonObject GameStatsPage()
+    {
+        var slots = new JsonArray(); slots.Add(null);
+        return new JsonObject { ["id"] = Guid.NewGuid().ToString("N")[..12], ["name"] = "Game stats", ["cols"] = 1, ["rows"] = 1, ["slots"] = slots, ["kind"] = "gamestats" };
+    }
+
+    /// <summary>Key pages for Adobe programs. They open by themselves when that program is in front ("autoApp" = process names).</summary>
+    public static IEnumerable<JsonObject> AdobePages()
+    {
+        JsonObject P(string name, string apps, params JsonObject[] keys) { var p = Page(name, 6, 4, keys); p["autoApp"] = apps; return p; }
+        const string r1 = "#ff4d6d", r2 = "#b71c1c", b1 = "#31a8ff", b2 = "#001e36", p1 = "#9999ff", p2 = "#2a1a5e", o1 = "#ff9a00", o2 = "#5a2d00";
+        yield return P("Photoshop", "photoshop",
+            Hk("Undo", "undo", b1, b2, "ctrl+z"), Hk("Redo", "redo", b1, b2, "ctrl+shift+z"), Hk("Save", "save", b1, b2, "ctrl+s"), Hk("Export", "ios_share", b1, b2, "ctrl+alt+shift+s"), Hk("Copy", "content_copy", b1, b2, "ctrl+c"), Hk("Paste", "content_paste", b1, b2, "ctrl+v"),
+            Hk("Move", "open_with", b1, b2, "v"), Hk("Brush", "brush", b1, b2, "b"), Hk("Eraser", "auto_fix_normal", b1, b2, "e"), Hk("Lasso", "gesture", b1, b2, "l"), Hk("Crop", "crop", b1, b2, "c"), Hk("Text", "title", b1, b2, "t"),
+            Hk("Brush +", "add_circle", b1, b2, "]"), Hk("Brush -", "remove_circle", b1, b2, "["), Hk("Swap colors", "swap_horiz", b1, b2, "x"), Hk("Reset colors", "palette", b1, b2, "d"), Hk("Zoom in", "zoom_in", b1, b2, "ctrl+plus"), Hk("Zoom out", "zoom_out", b1, b2, "ctrl+minus"),
+            Hk("Fit screen", "fit_screen", b1, b2, "ctrl+0"), Hk("New layer", "layers", b1, b2, "ctrl+shift+n"), Hk("Merge down", "merge", b1, b2, "ctrl+e"), Hk("Transform", "transform", b1, b2, "ctrl+t"), Hk("Select all", "select_all", b1, b2, "ctrl+a"), Hk("Deselect", "deselect", b1, b2, "ctrl+d"));
+        yield return P("Premiere Pro", "adobe premiere pro,premiere pro",
+            Hk("Play / Pause", "play_arrow", p1, p2, "space"), Hk("Cut (razor)", "content_cut", p1, p2, "ctrl+k"), Hk("Ripple delete", "delete_sweep", p1, p2, "shift+delete"), Hk("Undo", "undo", p1, p2, "ctrl+z"), Hk("Redo", "redo", p1, p2, "ctrl+shift+z"), Hk("Save", "save", p1, p2, "ctrl+s"),
+            Hk("Selection", "near_me", p1, p2, "v"), Hk("Razor tool", "content_cut", p1, p2, "c"), Hk("Mark in", "first_page", p1, p2, "i"), Hk("Mark out", "last_page", p1, p2, "o"), Hk("Marker", "bookmark", p1, p2, "m"), Hk("Import", "file_download", p1, p2, "ctrl+i"),
+            Hk("Frame back", "skip_previous", p1, p2, "left"), Hk("Frame forward", "skip_next", p1, p2, "right"), Hk("Prev edit", "keyboard_arrow_up", p1, p2, "up"), Hk("Next edit", "keyboard_arrow_down", p1, p2, "down"), Hk("Zoom in", "zoom_in", p1, p2, "plus"), Hk("Zoom out", "zoom_out", p1, p2, "minus"),
+            Hk("Render", "movie_filter", p1, p2, "enter"), Hk("Export", "ios_share", p1, p2, "ctrl+m"), Hk("Select all", "select_all", p1, p2, "ctrl+a"), Hk("Copy", "content_copy", p1, p2, "ctrl+c"), Hk("Paste", "content_paste", p1, p2, "ctrl+v"));
+        yield return P("After Effects", "afterfx",
+            Hk("Play / Pause", "play_arrow", p1, p2, "space"), Hk("Undo", "undo", p1, p2, "ctrl+z"), Hk("Redo", "redo", p1, p2, "ctrl+shift+z"), Hk("Save", "save", p1, p2, "ctrl+s"), Hk("Split layer", "content_cut", p1, p2, "ctrl+shift+d"), Hk("Duplicate", "content_copy", p1, p2, "ctrl+d"),
+            Hk("Render queue", "movie_filter", p1, p2, "ctrl+m"), Hk("New comp", "add_box", p1, p2, "ctrl+n"), Hk("Import", "file_download", p1, p2, "ctrl+i"), Hk("Zoom in", "zoom_in", p1, p2, "plus"), Hk("Zoom out", "zoom_out", p1, p2, "minus"), Hk("Select all", "select_all", p1, p2, "ctrl+a"));
+        yield return P("Illustrator", "illustrator",
+            Hk("Selection", "near_me", o1, o2, "v"), Hk("Direct select", "call_made", o1, o2, "a"), Hk("Pen", "edit", o1, o2, "p"), Hk("Text", "title", o1, o2, "t"), Hk("Rectangle", "crop_square", o1, o2, "m"), Hk("Ellipse", "circle", o1, o2, "l"),
+            Hk("Undo", "undo", o1, o2, "ctrl+z"), Hk("Redo", "redo", o1, o2, "ctrl+shift+z"), Hk("Save", "save", o1, o2, "ctrl+s"), Hk("Group", "group_work", o1, o2, "ctrl+g"), Hk("Ungroup", "workspaces", o1, o2, "ctrl+shift+g"), Hk("Fit screen", "fit_screen", o1, o2, "ctrl+0"),
+            Hk("Zoom in", "zoom_in", o1, o2, "ctrl+plus"), Hk("Zoom out", "zoom_out", o1, o2, "ctrl+minus"), Hk("Copy", "content_copy", o1, o2, "ctrl+c"), Hk("Paste", "content_paste", o1, o2, "ctrl+v"));
+    }
+
     /// <summary>Existing layouts get the Discord page once (deleting it afterwards sticks).</summary>
     void EnsureDiscordPage()
     {
         lock (gate)
         {
+            bool dirty = false;
+            if (layout["profiles"] is JsonArray pf && pf.Count > 0 && pf[0]?["pages"] is JsonArray pgs)
+            {
+                if (layout["gameAdded"]?.GetValue<bool>() != true) { layout["gameAdded"] = true; dirty = true; if (!pgs.Any(p => p?["kind"]?.GetValue<string>() == "gamestats")) pgs.Add(GameStatsPage()); }
+                if (layout["adobeAdded"]?.GetValue<bool>() != true) { layout["adobeAdded"] = true; dirty = true; if (!pgs.Any(p => p?["autoApp"] != null)) foreach (var ap in AdobePages()) pgs.Add(ap); }
+            }
+            if (dirty) { try { File.WriteAllText(FilePath, layout.ToJsonString()); } catch { } }
             if (layout["discordAdded"]?.GetValue<bool>() == true && layout["obsAdded"]?.GetValue<bool>() == true) return;
             if (layout["discordAdded"]?.GetValue<bool>() != true)
             {
@@ -177,11 +215,9 @@ public sealed class LayoutStore
             Tile("Uptime", "uptime", "#7c4dff"), Tile("Clock", "clock", "#ffffff"), Tile("Volume", "volume", "#00e5ff"),
             Tile("Brightness", "brightness", "#ff6d00"));
 
-        var prof = new JsonObject
-        {
-            ["id"] = "default", ["name"] = "Default",
-            ["pages"] = new JsonArray(home, stats, Page("Apps", 6, 4), Page("Games", 6, 4), Page("Streaming", 6, 4), Page("Page 6", 6, 4), DiscordPage(), ObsPage()),
-        };
-        return new JsonObject { ["version"] = 1, ["discordAdded"] = true, ["obsAdded"] = true, ["style"] = "flat", ["background"] = null, ["keyAlpha"] = 0.55, ["keyBlur"] = 0, ["activeProfile"] = "default", ["profiles"] = new JsonArray(prof) };
+        var allPages = new JsonArray(home, stats, Page("Apps", 6, 4), Page("Games", 6, 4), Page("Streaming", 6, 4), Page("Page 6", 6, 4), DiscordPage(), ObsPage(), GameStatsPage());
+        foreach (var ap in AdobePages()) allPages.Add(ap);
+        var prof = new JsonObject { ["id"] = "default", ["name"] = "Default", ["pages"] = allPages };
+        return new JsonObject { ["version"] = 1, ["discordAdded"] = true, ["obsAdded"] = true, ["gameAdded"] = true, ["adobeAdded"] = true, ["style"] = "flat", ["background"] = null, ["keyAlpha"] = 0.55, ["keyBlur"] = 0, ["activeProfile"] = "default", ["profiles"] = new JsonArray(prof) };
     }
 }

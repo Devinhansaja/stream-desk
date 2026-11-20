@@ -43,6 +43,13 @@ public static class SystemStats
         return GlobalMemoryStatusEx(ref m) ? (int)m.dwMemoryLoad : 0;
     }
 
+    public static (double usedGb, double totalGb) RamInfo()
+    {
+        var m = new MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>() };
+        if (!GlobalMemoryStatusEx(ref m)) return (0, 0);
+        return ((m.ullTotalPhys - m.ullAvailPhys) / 1073741824.0, m.ullTotalPhys / 1073741824.0);
+    }
+
     public static long UptimeSeconds() => Environment.TickCount64 / 1000;
 
     public static JsonObject Disks()

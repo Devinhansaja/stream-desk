@@ -103,6 +103,20 @@
   .dlist { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:8px; }
   .dc { background:#2b2d31; border:1px solid #ffffff22; border-radius:14px; padding:16px; font-size:16px; font-weight:600; }
   .dc:active { background:#5865f2; }
+  .gsw { position:absolute; inset:0; overflow:auto; display:flex; flex-direction:column; gap:10px; padding:calc(14px + env(safe-area-inset-top)) 14px 14px; background:rgba(0,0,0,.35); }
+  .gsw .gh { display:flex; align-items:baseline; gap:10px; } .gsw .gh b { font-size:20px; } .gsw .gh span { opacity:.7; font-size:13px; }
+  .gsw .gbig { display:flex; align-items:center; gap:14px; background:rgba(255,255,255,.08); border-radius:16px; padding:10px 16px; }
+  .gsw .gbig .n { font-size:64px; font-weight:800; line-height:1; color:#22e58b; font-variant-numeric:tabular-nums; min-width:150px; }
+  .gsw .gbig .n small { font-size:18px; opacity:.7; margin-left:4px; }
+  .gsw .gbig .s { flex:1; font-size:13px; opacity:.85; line-height:1.6; }
+  .gsw svg.spark { width:100%; height:52px; display:block; background:rgba(255,255,255,.05); border-radius:12px; }
+  .gsw .gg { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; }
+  .gsw .gc { background:rgba(255,255,255,.08); border-radius:14px; padding:8px 12px; }
+  .gsw .gc .l { font-size:11px; letter-spacing:.08em; text-transform:uppercase; opacity:.65; }
+  .gsw .gc .v { font-size:24px; font-weight:700; font-variant-numeric:tabular-nums; } .gsw .gc .v small { font-size:12px; opacity:.7; font-weight:500; }
+  .gsw .gc .bar { height:5px; background:rgba(255,255,255,.12); border-radius:3px; margin-top:4px; overflow:hidden; } .gsw .gc .bar i { display:block; height:100%; background:#1e90ff; width:0; transition:width .4s; }
+  .gsw .gnote { font-size:12px; opacity:.8; background:rgba(255,196,0,.14); border-radius:12px; padding:8px 12px; } .gsw .gnote button { margin-left:8px; padding:5px 12px; border-radius:8px; border:0; background:#ffc400; color:#000; font-weight:700; }
+  .gsw.idle .gbig .n { color:#8a93a6; }
   .obw { position:absolute; inset:0; overflow:auto; display:flex; flex-direction:column; gap:10px; padding:calc(14px + env(safe-area-inset-top)) 14px 14px; background:rgba(0,0,0,.35); }
   .obw .oh { display:flex; align-items:baseline; gap:10px; } .obw .oh b { font-size:22px; } .obw .oh span { opacity:.75; font-size:14px; }
   .obw.off .obtns, .obw.off .osc, .obw.off .omx, .obw.off .osec { opacity:.35; pointer-events:none; }
@@ -214,7 +228,7 @@ function render() {
   dots.style.display = shown.length > 1 ? 'flex' : 'none';
   curPage = Math.min(curPage, shown.length - 1);
   host.scrollTo({ left: curPage * host.clientWidth });
-  markDots(); refreshActive(); refreshWidgets(); refreshSliders(); setConn(connected ? 'on' : 'off'); activate(); renderDiscord(); autoDiscordPage();
+  markDots(); refreshActive(); refreshWidgets(); refreshSliders(); setConn(connected ? 'on' : 'off'); activate(); renderDiscord(); autoDiscordPage(); renderGame(); fgAutoIdx = -1; autoAppPage();
 }
 
 // ---- widget pages: clock, lyrics, YouTube, PC screen -------------------------------------------------
@@ -230,10 +244,11 @@ function activate() {
   if (connected) {
     if (wantMedia !== subMedia) { subMedia = wantMedia; sub('media_sub', wantMedia); }
     if (wantScreen !== subScreen) { subScreen = wantScreen; sub('screen_sub', wantScreen); }
+    const wantStats = k === 'gamestats'; if (wantStats !== subStats) { subStats = wantStats; sub('stats_sub', wantStats); }
   }
   document.querySelectorAll('iframe.ytw').forEach(f => { const on = k === 'youtube' && f.closest('.wpage') === $('pages').children[curPage]; const want = on ? f.dataset.src : 'about:blank'; if (f.getAttribute('src') !== want) f.setAttribute('src', want); });
 }
-function resetSubs() { subMedia = false; subScreen = false; activate(); }
+function resetSubs() { subMedia = false; subScreen = false; subStats = false; activate(); send({ t: 'fg_get' }); }
 function mkPage(extra) { const el = document.createElement('div'); el.className = 'page wpage'; el.dataset.kind = extra; ['l', 'r'].forEach(s => { const e = document.createElement('div'); e.className = 'edge ' + s; el.append(e); }); return el; }
 function widgetPage(pg) {
   const el = mkPage(pg.kind);
@@ -282,12 +297,58 @@ function widgetPage(pg) {
     const dur = w.querySelector('.otd input'); let dl = 0;
     dur.addEventListener('input', () => { w.querySelector('.otd b').textContent = dur.value + ' ms'; w._drag = true; const n = Date.now(); if (n - dl > 150) { dl = n; sendAct({ type: 'obs_transition_duration', ms: +dur.value }, true); } });
     dur.addEventListener('change', () => { sendAct({ type: 'obs_transition_duration', ms: +dur.value }, true); setTimeout(() => { w._drag = false; }, 600); });
-    el.append(w); setTimeout(renderObs, 0);  } else if (pg.kind === 'screen') {
+    el.append(w); setTimeout(renderObs, 0);  } else if (pg.kind === 'gamestats') {
+    const w = document.createElement('div'); w.className = 'gsw idle';
+    const cell = (k, l) => `<div class="gc" data-k="${k}"><div class="l">${l}</div><div class="v">–</div><div class="bar"><i></i></div></div>`;
+    w.innerHTML = '<div class="gh"><b>Game</b><span class="gname">Waiting for a game…</span></div>'
+      + '<div class="gbig"><div class="n">–<small>FPS</small></div><div class="s"></div></div>'
+      + '<svg class="spark" viewBox="0 0 120 40" preserveAspectRatio="none"><polyline fill="none" stroke="#22e58b" stroke-width="1.5" points=""/></svg>'
+      + '<div class="gg">' + cell('cpu', 'CPU') + cell('gpu', 'GPU') + cell('ram', 'RAM') + cell('vram', 'VRAM') + cell('temp', 'GPU temp') + cell('power', 'GPU power') + cell('clock', 'GPU clock') + cell('bat', 'Battery') + '</div>'
+      + '<div class="gnote" style="display:none"></div>';
+    el.append(w); setTimeout(renderGame, 0);
+  } else if (pg.kind === 'screen') {
     const img = document.createElement('img'); img.className = 'scrw'; img.alt = ''; el.append(img);
     const m = document.createElement('div'); m.className = 'wmsg'; m.textContent = 'Connecting to PC screen…'; m.id = 'scrMsg'; el.append(m);
     bindScreenTouch(img);
   }
   return el;
+}
+// ---- Game stats ------------------------------------------------------------------------------
+let game = null, subStats = false;
+const SAMPLE_GAME = { active: { name: 'Cyberpunk 2077' }, isGame: true, session: 1234, fps: 87, frameMs: 11.5, low1: 61, fpsSource: 'etw', cpu: 41, cpuProc: 28, ramUsed: 14.2, ramTotal: 32, ramProc: 6.1, gpu: 96, gpuProc: 94, vramUsed: 6.4, vramTotal: 8, vramProc: 5.9, gpuTemp: 71, gpuPower: 98, gpuClock: 2310, battery: 88, charging: true, fpsHelper: 'Running', hist: { fps: [80, 84, 90, 88, 79, 85, 91, 87, 86, 87], cpu: [], gpu: [] } };
+function renderGame() {
+  const g = PREVIEW ? SAMPLE_GAME : game;
+  document.querySelectorAll('.gsw').forEach(w => {
+    const set = (k, txt, pct) => { const c = w.querySelector(`[data-k="${k}"]`); if (!c) return; c.querySelector('.v').innerHTML = txt; c.querySelector('.bar i').style.width = Math.max(0, Math.min(100, pct || 0)) + '%'; c.style.display = txt === null ? 'none' : ''; };
+    const n = w.querySelector('.gbig .n'), s = w.querySelector('.gbig .s'), note = w.querySelector('.gnote');
+    if (!g) { w.querySelector('.gname').textContent = connected ? 'Waiting for data…' : 'Not connected'; return; }
+    w.classList.toggle('idle', !g.isGame);
+    w.querySelector('.gname').textContent = g.active ? g.active.name + (g.session ? '  ·  ' + Math.floor(g.session / 60) + ' min' : '') : 'No game running';
+    n.innerHTML = (g.fps != null ? Math.round(g.fps) : '–') + '<small>FPS</small>';
+    s.innerHTML = g.fps != null ? `Frame time <b>${g.frameMs} ms</b>` + (g.low1 ? `<br>1% low <b>${Math.round(g.low1)}</b> FPS` : '') + `<br><span style="opacity:.6">via ${g.fpsSource === 'rtss' ? 'MSI Afterburner' : 'PC helper'}</span>` : (g.isGame ? 'FPS is off' : 'Start a game on the PC');
+    const U = (v, u) => v == null ? null : `${v}<small> ${u}</small>`;
+    set('cpu', `${g.cpu}<small> %${g.cpuProc ? '  ·  game ' + Math.round(g.cpuProc) + '%' : ''}</small>`, g.cpu);
+    set('gpu', `${g.gpu}<small> %${g.gpuProc ? '  ·  game ' + g.gpuProc + '%' : ''}</small>`, g.gpu);
+    set('ram', `${g.ramUsed}<small> / ${g.ramTotal} GB${g.ramProc ? '  ·  game ' + g.ramProc : ''}</small>`, g.ramTotal ? g.ramUsed / g.ramTotal * 100 : 0);
+    set('vram', `${g.vramUsed}<small>${g.vramTotal ? ' / ' + g.vramTotal : ''} GB${g.vramProc ? '  ·  game ' + g.vramProc : ''}</small>`, g.vramTotal ? g.vramUsed / g.vramTotal * 100 : 0);
+    set('temp', U(g.gpuTemp, '°C'), g.gpuTemp); set('power', U(g.gpuPower, 'W'), g.gpuPower ? g.gpuPower / 3 : 0); set('clock', U(g.gpuClock, 'MHz'), g.gpuClock ? g.gpuClock / 30 : 0);
+    set('bat', g.battery == null ? null : `${g.battery}<small> %${g.charging ? ' ⚡' : ''}</small>`, g.battery);
+    const h = (g.hist && g.hist.fps) || [], src = h.some(x => x > 0) ? h : ((g.hist && g.hist.gpu) || []);
+    const mx = Math.max(10, ...src); w.querySelector('polyline').setAttribute('points', src.map((v, i) => `${(i / Math.max(1, src.length - 1) * 120).toFixed(1)},${(38 - v / mx * 36).toFixed(1)}`).join(' '));
+    const need = g.isGame && g.fps == null && g.fpsHelper !== 'Running';
+    note.style.display = need ? '' : 'none';
+    if (need) { note.innerHTML = (g.fpsHelper === 'Starting' ? 'Waiting for Windows permission on the PC…' : g.fpsHelper === 'Declined' ? 'Permission was declined.' : 'FPS needs a one-time permission on the PC.') + (g.fpsHelper === 'Starting' ? '' : '<button>Turn on FPS</button>'); const b = note.querySelector('button'); if (b) b.onclick = () => { native('h'); send({ t: 'stats_helper' }); }; }
+  });
+}
+// ---- Auto page for a program: pages with "autoApp" open when that program is in front ----------------
+let fgApp = '', fgAutoIdx = -1, fgPrev = 0;
+function autoAppPage() {
+  if (PREVIEW || folderId || !fgApp) return;
+  const idx = shownPages.findIndex(p => p.autoApp && p.autoApp.toLowerCase().split(',').some(a => a.trim() && fgApp.includes(a.trim())));
+  const host = $('pages');
+  const go = i => { curPage = i; host.scrollTo({ left: i * host.clientWidth }); markDots(); activate(); };
+  if (idx >= 0) { if (fgAutoIdx !== idx) { if (fgAutoIdx < 0) fgPrev = curPage; fgAutoIdx = idx; if (curPage !== idx) go(idx); } }
+  else if (fgAutoIdx >= 0) { const was = fgAutoIdx; fgAutoIdx = -1; const back = Math.min(fgPrev, shownPages.length - 1); if (curPage === was && back !== was) go(back); }
 }
 // ---- OBS control center ------------------------------------------------------------------------
 function sendAct(a, quiet) { if (!connected) { toast('Not connected to the PC'); return; } const id = nextId++; pending[id] = r => { if (!r.ok && !quiet) toast(r.error || 'Failed'); }; send({ t: 'action', id, action: a }); }
@@ -611,6 +672,8 @@ function onMsg(m) {
     case 'auth_fail': native('unpaired'); break;
     case 'status': status = m; refreshActive(); refreshWidgets(); refreshSliders(); break;
     case 'obs': obs = m; renderObs(); refreshActive(); break;
+    case 'game': game = m; renderGame(); break;
+    case 'fg': fgApp = m.app || ''; autoAppPage(); break;
     case 'discord': if (m.inCall !== discord.inCall) dView = null; if (m.rpc !== 'ok') dGuilds = null; discord = m; renderDiscord(); refreshActive(); autoDiscordPage(); break;
     case 'layout': setLayout(m.layout); break;
   }
