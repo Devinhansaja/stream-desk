@@ -1,7 +1,7 @@
 ; Inno Setup script for the StreamDeck Host Windows installer.
 ; Build:  iscc installer\StreamDeckHost.iss      (after running build-windows.ps1, which fills windows\publish)
 #define AppName "StreamDeck Host"
-#define AppVersion "1.12.2"
+#define AppVersion "1.13.0"
 #define AppExe "StreamDeckHost.exe"
 
 [Setup]

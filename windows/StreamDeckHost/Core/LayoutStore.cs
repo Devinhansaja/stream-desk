@@ -186,6 +186,27 @@ public sealed class LayoutStore
                 if (layout["gameAdded"]?.GetValue<bool>() != true) { layout["gameAdded"] = true; dirty = true; if (!pgs.Any(p => p?["kind"]?.GetValue<string>() == "gamestats")) pgs.Add(GameStatsPage()); }
                 if (layout["adobeAdded"]?.GetValue<bool>() != true) { layout["adobeAdded"] = true; dirty = true; if (!pgs.Any(p => p?["autoApp"] != null)) foreach (var ap in AdobePages()) pgs.Add(ap); }
             }
+            if (layout["netAdded"]?.GetValue<bool>() != true)
+            {
+                layout["netAdded"] = true; dirty = true;
+                // put the 4 internet tiles into free keys of the page that already has the CPU / RAM tiles
+                var statPage = (layout["profiles"] as JsonArray)?[0]?["pages"] is JsonArray sp ? sp.OfType<JsonObject>().FirstOrDefault(p => p["slots"] is JsonArray sl && sl.OfType<JsonObject>().Any(b => b["widget"]?.GetValue<string>() == "cpu")) : null;
+                if (statPage == null && layout["profiles"] is JsonArray pfn && pfn.Count > 0 && pfn[0]?["pages"] is JsonArray pgn)
+                {
+                    // no stats page in this layout (it was removed or never existed): add a small one
+                    statPage = Page("Internet", 4, 3);
+                    pgn.Add(statPage);
+                }
+                if (statPage?["slots"] is JsonArray slots)
+                {
+                    foreach (var (label, w, col) in new[] { ("Download", "net_down", "#22e58b"), ("Upload", "net_up", "#ff6d00"), ("Downloaded", "net_down_total", "#1e90ff"), ("Uploaded", "net_up_total", "#7c4dff") })
+                    {
+                        if (slots.OfType<JsonObject>().Any(b => b["widget"]?.GetValue<string>() == w)) continue;
+                        int free = -1; for (int i = 0; i < slots.Count; i++) if (slots[i] == null) { free = i; break; }
+                        if (free >= 0) slots[free] = Tile(label, w, col);
+                    }
+                }
+            }
             if (layout["profiles"] is JsonArray pf2 && pf2.Count > 0 && pf2[0]?["pages"] is JsonArray pgs2 && layout["creativeAdded"]?.GetValue<bool>() != true)
             {
                 layout["creativeAdded"] = true; dirty = true;
@@ -252,7 +273,8 @@ public sealed class LayoutStore
         var stats = Page("Stats", 6, 4,
             Tile("CPU", "cpu", "#22e58b"), Tile("RAM", "ram", "#1e90ff"), Tile("C:", "disk:C", "#ffc400"),
             Tile("Uptime", "uptime", "#7c4dff"), Tile("Clock", "clock", "#ffffff"), Tile("Volume", "volume", "#00e5ff"),
-            Tile("Brightness", "brightness", "#ff6d00"));
+            Tile("Brightness", "brightness", "#ff6d00"),
+            Tile("Download", "net_down", "#22e58b"), Tile("Upload", "net_up", "#ff6d00"), Tile("Downloaded", "net_down_total", "#1e90ff"), Tile("Uploaded", "net_up_total", "#7c4dff"));
 
         var allPages = new JsonArray(home, stats, Page("Apps", 6, 4), Page("Games", 6, 4), Page("Streaming", 6, 4), Page("Page 6", 6, 4), DiscordPage(), ObsPage(), GameStatsPage());
         foreach (var ap in AdobePages()) allPages.Add(ap);

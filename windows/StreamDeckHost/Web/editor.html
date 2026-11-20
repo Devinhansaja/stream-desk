@@ -250,7 +250,7 @@ const ACTIONS = [
   { type:'back', label:'Back (close folder)', cat:'Flow', icon:'arrow_back', params:[] },
 ];
 const CAT_COLORS = { OBS:['#a78bfa','#6d28d9'], Discord:['#5865f2','#3b4cc0'], Audio:['#1e90ff','#00e5ff'], Display:['#ffc400','#ff6d00'], Input:['#7c4dff','#d500f9'], Launch:['#00e676','#1b5e20'], Power:['#ff1744','#b71c1c'], Flow:['#b0bec5','#455a64'] };
-const WIDGETS = [['cpu','CPU %','memory'],['ram','RAM %','developer_board'],['uptime','PC uptime','schedule'],['clock','Clock','access_time'],['volume','Volume','volume_up'],['brightness','Brightness','brightness_6'],['disk:C','Disk C: free','storage'],['disk:D','Disk D: free','storage'],['disk:E','Disk E: free','storage'],['slider:volume','Volume slider','tune'],['slider:brightness','Brightness slider','brightness_6']];
+const WIDGETS = [['cpu','CPU %','memory'],['ram','RAM %','developer_board'],['uptime','PC uptime','schedule'],['net_down','Internet download speed','download'],['net_up','Internet upload speed','upload'],['net_down_total','Data downloaded (since start)','cloud_download'],['net_up_total','Data uploaded (since start)','cloud_upload'],['clock','Clock','access_time'],['volume','Volume','volume_up'],['brightness','Brightness','brightness_6'],['disk:C','Disk C: free','storage'],['disk:D','Disk D: free','storage'],['disk:E','Disk E: free','storage'],['slider:volume','Volume slider','tune'],['slider:brightness','Brightness slider','brightness_6']];
 const def = t => ACTIONS.find(a => a.type === t) || ACTIONS[0];
 const defaults = t => { const a = { type: t }; def(t).params.forEach(p => { if (p.def !== undefined) a[p.k] = p.def; }); if (t === 'macro') a.steps = []; return a; };
 const PALETTE = ['#1e90ff','#00e5ff','#7c4dff','#d500f9','#ff1744','#ff6d00','#ffc400','#76ff03','#00e676','#1de9b6','#ff4081','#b0bec5'];
@@ -285,7 +285,7 @@ async function save() {
 }
 
 // ------------------------------------------------------------------ keys
-function widgetText(w) { const m = { cpu:'37%', ram:'52%', uptime:'1d 4:12', clock:'12:34', volume:'70%', brightness:'80%' }; if (w.startsWith('slider:')) return '60%'; return w.startsWith('disk:') ? '512 GB free' : (m[w] || ''); }
+function widgetText(w) { const m = { net_down:'12.4 MB/s', net_up:'1.8 MB/s', net_down_total:'3.2 GB', net_up_total:'410 MB', cpu:'37%', ram:'52%', uptime:'1d 4:12', clock:'12:34', volume:'70%', brightness:'80%' }; if (w.startsWith('slider:')) return '60%'; return w.startsWith('disk:') ? '512 GB free' : (m[w] || ''); }
 function keyNode(b) {
   const neon = L.style === 'neon', k = el('div', { className: 'key' });
   if (neon) {

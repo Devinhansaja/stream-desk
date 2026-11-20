@@ -50,6 +50,37 @@ public static class SystemStats
         return ((m.ullTotalPhys - m.ullAvailPhys) / 1073741824.0, m.ullTotalPhys / 1073741824.0);
     }
 
+    // ---- network: current speed and data used since the host started (all real adapters added together)
+    static readonly Dictionary<string, (long rx, long tx)> netLast = new();
+    static DateTime netAt = DateTime.MinValue;
+    static double netDown, netUp, netTotRx, netTotTx;
+
+    /// <summary>(download B/s, upload B/s, downloaded bytes, uploaded bytes) since the host started.</summary>
+    public static (double down, double up, double totalDown, double totalUp) Net()
+    {
+        lock (gate)
+        {
+            var now = DateTime.UtcNow; var dt = (now - netAt).TotalSeconds;
+            if (netAt != DateTime.MinValue && dt < 0.8) return (netDown, netUp, netTotRx, netTotTx);
+            long dRx = 0, dTx = 0;
+            try
+            {
+                foreach (var nic in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (nic.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+                    if (nic.NetworkInterfaceType is System.Net.NetworkInformation.NetworkInterfaceType.Loopback or System.Net.NetworkInformation.NetworkInterfaceType.Tunnel) continue;
+                    var st = nic.GetIPv4Statistics(); long rx = st.BytesReceived, tx = st.BytesSent;
+                    if (netLast.TryGetValue(nic.Id, out var p) && rx >= p.rx && tx >= p.tx) { dRx += rx - p.rx; dTx += tx - p.tx; }
+                    netLast[nic.Id] = (rx, tx);
+                }
+            }
+            catch { }
+            if (netAt != DateTime.MinValue && dt > 0) { netDown = dRx / dt; netUp = dTx / dt; netTotRx += dRx; netTotTx += dTx; }
+            netAt = now;
+            return (netDown, netUp, netTotRx, netTotTx);
+        }
+    }
+
     public static long UptimeSeconds() => Environment.TickCount64 / 1000;
 
     public static JsonObject Disks()

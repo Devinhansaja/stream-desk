@@ -638,9 +638,11 @@ public sealed class HostServer : IDisposable
                 try { cachedBrightness = BrightnessControl.Get(); } catch { cachedBrightness = -1; }
                 brightnessAt = DateTime.UtcNow;
             }
+            var net = SystemStats.Net();
             return new JsonObject
             {
                 ["t"] = "status",
+                ["netDown"] = Math.Round(net.down), ["netUp"] = Math.Round(net.up), ["netTotDown"] = Math.Round(net.totalDown), ["netTotUp"] = Math.Round(net.totalUp),
                 ["cpu"] = SystemStats.Cpu(),
                 ["ram"] = SystemStats.Ram(),
                 ["uptime"] = SystemStats.UptimeSeconds(),

@@ -184,6 +184,11 @@ function fmtWidget(w) {
   if (!connected) return { v: '—' };
   if (w === 'cpu') return { v: `${s.cpu ?? 0}<small>%</small>`, bar: pct(s.cpu) };
   if (w === 'ram') return { v: `${s.ram ?? 0}<small>%</small>`, bar: pct(s.ram) };
+  if (w === 'net_down' || w === 'net_up' || w === 'net_down_total' || w === 'net_up_total') {
+    const f = (b, rate) => { const u = rate ? ['B', 'KB', 'MB', 'GB'] : ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; } return `${b >= 100 || i === 0 ? Math.round(b) : b.toFixed(1)}<small> ${u[i]}${rate ? '/s' : ''}</small>`; };
+    const v = w === 'net_down' ? s.netDown : w === 'net_up' ? s.netUp : w === 'net_down_total' ? s.netTotDown : s.netTotUp;
+    return { v: f(v || 0, w.endsWith('down') || w.endsWith('up')) };
+  }
   if (w === 'volume') return { v: `${s.volume ?? 0}<small>%</small>`, bar: pct(s.volume) };
   if (w === 'brightness') return s.brightness < 0 ? { v: 'n/a' } : { v: `${s.brightness}<small>%</small>`, bar: pct(s.brightness) };
   if (w === 'uptime') { const t = s.uptime || 0, d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60); return { v: (d ? d + 'd ' : '') + `${h}:${String(m).padStart(2, '0')}` }; }
@@ -714,7 +719,7 @@ $('mSettings').onclick = () => { $('menu').classList.remove('show'); native('set
 function startPreview() {
   document.body.classList.add('preview');
   connected = true;
-  status = { cpu: 37, ram: 52, uptime: 93784, volume: 70, brightness: 80, muted: false, micMuted: false, disks: { C: { free: 512, total: 953 }, D: { free: 300, total: 931 }, E: { free: 120, total: 476 } } };
+  status = { netDown: 13002342, netUp: 1887436, netTotDown: 3435973836, netTotUp: 429496729, cpu: 37, ram: 52, uptime: 93784, volume: 70, brightness: 80, muted: false, micMuted: false, disks: { C: { free: 512, total: 953 }, D: { free: 300, total: 931 }, E: { free: 120, total: 476 } } };
   discord = { rpc: 'ok', status: '', inCall: true, channel: 'General', mute: false, deaf: false, users: [{ id: '1', name: 'You', avatar: '', mute: false, deaf: false, speaking: true }, { id: '2', name: 'Alex', avatar: '', mute: true, deaf: false, speaking: false }, { id: '3', name: 'Sam', avatar: '', mute: false, deaf: false, speaking: false }] };
   obs = { rpc: 'ok', status: '', scene: 'Gameplay', scenes: ['Starting Soon', 'Gameplay', 'Chatting'], streaming: false, recording: false, paused: false, vcam: false, streamTime: '', recTime: '', studio: false, preview: '', replay: false, itemsScene: 'Gameplay', items: [{ id: 1, name: 'Overlay', enabled: true, locked: true, group: false }, { id: 2, name: 'Webcam', enabled: true, locked: false, group: false }, { id: 3, name: 'Game Capture', enabled: true, locked: false, group: false }], transitions: ['Cut', 'Fade', 'Slide'], transition: 'Fade', transitionMs: 300, inputs: [{ name: 'Mic/Aux', mute: false, vol: 0.8 }, { name: 'Desktop Audio', mute: false, vol: 0.5 }] };
   window.addEventListener('message', e => {
