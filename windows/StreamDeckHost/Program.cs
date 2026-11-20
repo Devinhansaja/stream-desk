@@ -16,7 +16,10 @@ static class Program
             try { Process.GetProcessById(pid).WaitForExit(15000); } catch { }
         }
 
-        using var mutex = new Mutex(true, @"Local\StreamDeckHost.SingleInstance", out bool first);
+        // Test runs (SDH_DATA_DIR set) get their own lock so they can run next to the real, installed host.
+        var testDir = Environment.GetEnvironmentVariable("SDH_DATA_DIR");
+        var lockName = @"Local\StreamDeckHost.SingleInstance" + (string.IsNullOrEmpty(testDir) ? "" : "." + Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(testDir)))[..8]);
+        using var mutex = new Mutex(true, lockName, out bool first);
         if (!first)
         {
             MessageBox.Show("StreamDeck Host is already running (check the system tray).", "StreamDeck Host");

@@ -214,6 +214,15 @@ public static class WebEndpoints
             catch (Exception e) { return Results.Json(new { error = e.Message }, statusCode: 502); }
         });
 
+        app.MapGet("/api/file-icon", async (HttpContext c) =>
+        {
+            if (!IsLocalEditor(c, port)) return Results.StatusCode(403);
+            var path = c.Request.Query["path"].ToString().Trim().Trim('"');
+            if (path.Length == 0) return Results.BadRequest(new { error = "missing path" });
+            var icon = await Task.Run(() => AppScanner.IconForPath(Environment.ExpandEnvironmentVariables(path)));
+            return icon == null ? Results.NotFound(new { error = "No icon found (is the path right?)" }) : Results.Text(new JsonObject { ["icon"] = icon }.ToJsonString(), "application/json");
+        });
+
         app.MapGet("/api/obs", (HttpContext c) =>
             IsLocalEditor(c, port) ? Results.Text(server.Obs.Snapshot().ToJsonString(), "application/json") : Results.StatusCode(403));
 

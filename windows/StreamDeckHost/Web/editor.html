@@ -102,6 +102,9 @@
       <label class="f">Key opacity (lower = see background)</label><input type="range" id="keyAlpha" min="0" max="1" step="0.05" style="width:100%">
       <label class="f">Glass blur</label><input type="range" id="keyBlur" min="0" max="20" step="1" style="width:100%">
       <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="showLabels"> Show titles on keys</label>
+      <label class="f">Icons for new keys</label>
+      <select id="iconStyle" style="width:100%"><option value="classic">Classic (clean line icons)</option><option value="emoji">Colorful (emoji)</option></select>
+      <div class="stack"><button id="colorizeAll" title="Turns every key's classic icon into a colorful emoji (keys with your own image or live tiles are kept)">🎨 Make all keys colorful</button></div>
       <h3>Live background</h3>
       <div class="stack"><button id="bgBtn">Upload image / GIF / video…</button></div>
       <select id="bgPreset" style="width:100%;margin-top:6px"><option value="">Animated preset…</option><option value="aurora">Aurora</option><option value="grid">Neon grid</option><option value="waves">Waves</option><option value="stars">Stars</option></select>
@@ -261,10 +264,25 @@ function makeFolder() {
   return newButton({ label: 'Folder', icon: 'folder', color1: '#ffc400', color2: '#ff6d00', action: { type: 'folder', pageId: fp.id } });
 }
 function resizePage(pg, c, r) { const keep = pg.slots.filter(Boolean); keep.forEach(b => { b.colSpan = 1; b.rowSpan = 1; }); pg.cols = c; pg.rows = r; pg.slots = Array(c * r).fill(null); keep.forEach((b, i) => { if (i < pg.slots.length) pg.slots[i] = b; }); }
+// ---- creative icons: colorful emoji (work offline, in every browser/phone) ---------------------------------------------
+const EMOJI = {
+  'Controls': '🔊🔉🔇🎤🎙️🎧🎚️🎛️🔔🔕📢📣⏯️▶️⏸️⏹️⏭️⏮️⏩⏪🔁🔀🔅🔆☀️🌙💡🔌🔋📶',
+  'PC & apps': '💻🖥️⌨️🖱️🖨️📱📁📂📝📄📊📈🗂️🧩🧮🔧🛠️⚙️🔍🔒🔓🔑🗑️💾💽📡',
+  'Games': '🎮🕹️👾🎲♟️🏆🥇🎯⚔️🛡️🏹💣🚀🏎️🏁🎰🃏',
+  'Media': '🎬📺📹📸🖼️🎵🎶🎼📻🎥📽️🎞️🎭🎨🖌️',
+  'Social': '💬📞📧✉️🌐📨🗨️👥👤🤝🔗📰',
+  'Fun': '🔥⚡✨🌈💎👑🧠💀👻🤖🦄🐱🐶🍕🍔☕🍿🎉🎁❤️💜💙💚💛🧡',
+  'Symbols': '✅❌⚠️🚫⭕🔴🟢🔵🟡🟣⬛⬜➕➖✖️➗❓❗💯🆗🔝',
+};
+const ICON_EMOJI = { volume_up:'🔊', volume_down:'🔉', volume_off:'🔇', mic_off:'🎙️', mic:'🎤', wb_sunny:'☀️', brightness_low:'🔅', brightness_medium:'🔆', brightness_6:'🔆', photo_camera:'📸', lock:'🔒', power_settings_new:'🔌', restart_alt:'🔄', public:'🌐', speed:'📊', image:'🖼️', play_arrow:'▶️', skip_next:'⏭️', skip_previous:'⏮️', desktop_windows:'🖥️', content_cut:'✂️', folder:'📁', folder_open:'📂', settings:'⚙️', smart_display:'📺', edit_note:'📝', calculate:'🧮', bedtime:'😴', logout:'🚪', keyboard:'⌨️', text_fields:'🔤', apps:'🧩', terminal:'💻', close:'❌', movie:'🎬', cell_tower:'📡', fiber_manual_record:'🔴', pause_circle:'⏸️', videocam:'📹', tune:'🎚️', visibility:'👁️', view_agenda:'🎛️', swap_horiz:'🔀', replay:'⏪', save:'💾', call_end:'📞', headset_off:'🎧', sports_esports:'🎮', timer:'⏱️', block:'🚫', arrow_back:'↩️', memory:'🧠', developer_board:'🔧', schedule:'🕒', access_time:'⏰', storage:'💽', add:'➕', bolt:'⚡' };
+const segs = s => [...new Intl.Segmenter().segment(s)].map(x => x.segment);
+/** Swap a classic Material icon for its colorful emoji (keys with their own image or live tiles are left alone). */
+function applyEmoji(b) { const e = ICON_EMOJI[b.icon]; if (e && !b.image && !b.widget && !(b.icon || '').startsWith('t:')) b.icon = 't:' + e; return b; }
 function newButton(over = {}) { return Object.assign({ id: uid(), label: '', icon: 'bolt', image: null, widget: null, color1: '#1e90ff', color2: '#7c4dff', glow: 0.6, confirm: false, action: defaults('volume_up') }, over); }
 
 /** Turns something dragged from the library into a button (or an action). */
-function fromPayload(p) {
+function fromPayload(p) { const nb = fromPayloadRaw(p); if (nb && L.iconStyle === 'emoji' && p.kind !== 'app') applyEmoji(nb); return nb; }
+function fromPayloadRaw(p) {
   if (p.kind === 'action' && p.type === 'folder') return makeFolder();
   if (p.kind === 'action') { const d = def(p.type), c = CAT_COLORS[d.cat] || CAT_COLORS.Flow; return newButton({ label: d.label.replace(/ \(.*\)/, ''), icon: d.icon, color1: c[0], color2: c[1], action: defaults(p.type) }); }
   if (p.kind === 'preset') { const [label, icon, c1, c2, action, confirm] = PRESETS[p.i]; return newButton({ label, icon, color1: c1, color2: c2, confirm: !!confirm, action: JSON.parse(JSON.stringify(action)) }); }
@@ -343,6 +361,7 @@ function draw(panel = true) {
   const pg = page(); $('cols').value = pg.cols; $('rows').value = pg.rows; $('styleSel').value = L.style === 'neon' ? 'neon' : 'flat';
   const bgKey = JSON.stringify(L.background || null);
   if (bgKey !== window.lastBg) { window.lastBg = bgKey; applyBg($('bgLayer'), L.background, L.bgDim); } else setBgDim($('bgLayer'), L.bgDim);
+  $('iconStyle').value = L.iconStyle === 'emoji' ? 'emoji' : 'classic';
   $('showLabels').checked = L.showLabels === true; $('keyAlpha').value = L.keyAlpha == null ? 0.55 : L.keyAlpha; $('keyBlur').value = L.keyBlur || 0;
   $('bgDim').value = L.bgDim == null ? 0.25 : L.bgDim; $('bgPreset').value = L.background && L.background.type === 'preset' ? L.background.id : '';
   const g = $('grid'); g.innerHTML = ''; g.className = L.style === 'neon' ? '' : 'flat'; g.style.setProperty('--ar', pg.cols / pg.rows);
@@ -443,27 +462,44 @@ function drawPanel() {
   file.onchange = () => { const f = file.files[0]; if (!f) return; const im = new Image(); im.onload = () => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); const s = Math.min(im.width, im.height); x.drawImage(im, (im.width - s) / 2, (im.height - s) / 2, s, s, 0, 0, 128, 128); b.image = c.toDataURL('image/png'); changed(); }; im.src = URL.createObjectURL(f); };
   p.append(field('Icon', q), grid, el('div', { style: 'margin-top:8px' }, txt), field('…or your own image', file));
   if (b.image) p.append(el('button', { textContent: 'Remove image', onclick: () => { b.image = null; changed(); } }));
-  // ---- find an icon online: Iconify (logos/icons) + Google favicon (website icon); needs internet on the PC
-  const wq = el('input', { type: 'text', placeholder: 'Search online (discord, chrome, spotify…)', value: b.label || '' });
-  const wr = el('div', { className: 'icons' }), wmsg = el('div', { className: 'hint' });
+  // ---- creative icons: emoji picker ---------------------------------------------------------------------------------
+  { const det = el('details', { style: 'margin-top:10px' }); det.append(el('summary', { textContent: '🎨 Colorful emoji icons' }));
+    const tabs = el('div', { className: 'sw', style: 'gap:6px;margin:6px 0' }), eg = el('div', { className: 'icons emo' });
+    const showGroup = k => { eg.innerHTML = ''; tabs.querySelectorAll('button').forEach(x => x.style.borderColor = x.dataset.k === k ? 'var(--purple)' : ''); segs(EMOJI[k]).forEach(em => { const d = el('div', { textContent: em, style: 'font:24px system-ui,"Segoe UI Emoji"' }); if (b.icon === 't:' + em) d.classList.add('on'); d.onclick = () => { b.icon = 't:' + em; b.image = null; b.widget = null; changed(); }; eg.append(d); }); };
+    Object.keys(EMOJI).forEach(k => { const t = el('button', { textContent: k, style: 'padding:3px 9px;font-size:12px' }); t.dataset.k = k; t.onclick = () => showGroup(k); tabs.append(t); });
+    det.append(tabs, eg); showGroup('Controls'); p.append(det); }
+
+  // ---- find an icon online: Iconify libraries + Google website icon (needs internet on the PC) -----------------------
+  const wq = el('input', { type: 'text', placeholder: 'Search online (discord, game, fire, rocket…)', value: b.label || '' });
+  const wset = el('select'); [['', 'All icon sets'], ['logos,skill-icons,devicon', 'Brand logos (colorful)'], ['fluent-emoji', '3D emoji'], ['fluent-emoji-flat,noto,twemoji,openmoji', 'Flat emoji'], ['flat-color-icons', 'Colorful icons'], ['simple-icons', 'Brand icons (single color)'], ['game-icons', 'Gaming icons (single color)'], ['mdi,material-symbols', 'Material (single color)']].forEach(([v, t]) => wset.append(el('option', { value: v, textContent: t })));
+  const wr = el('div', { className: 'icons', style: 'max-height:240px' }), wmsg = el('div', { className: 'hint' });
+  const COLORED = new Set(['logos', 'skill-icons', 'devicon', 'vscode-icons', 'fluent-emoji', 'fluent-emoji-flat', 'noto', 'twemoji', 'openmoji', 'emojione', 'flat-color-icons', 'streamline-emojis', 'noto-v1', 'icons8']);
+  const iconUrl = (n, h) => { const [pre, name] = n.split(':'); return `https://api.iconify.design/${pre}/${name}.svg?height=${h}` + (COLORED.has(pre) ? '' : '&color=%23ffffff'); };
   const setImageFrom = async (url, viaHost) => {
     wmsg.textContent = 'Adding icon…';
     try {
       const r = await fetch(viaHost ? '/api/fetch-image?url=' + encodeURIComponent(url) : url); if (!r.ok) throw new Error('HTTP ' + r.status);
       const blob = await r.blob(); const src = URL.createObjectURL(blob.type ? blob : new Blob([blob], { type: 'image/svg+xml' }));
       const im = new Image(); await new Promise((ok, no) => { im.onload = ok; im.onerror = () => no(new Error('could not read image')); im.src = src; });
-      const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'); const s = Math.min(im.naturalWidth || 128, im.naturalHeight || 128) || 128;
+      const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
       x.drawImage(im, 0, 0, im.naturalWidth || 128, im.naturalHeight || 128, 0, 0, 128, 128);
-      b.image = c.toDataURL('image/png'); changed(); wmsg.textContent = '';
+      b.image = c.toDataURL('image/png'); b.widget = null; changed(); wmsg.textContent = '';
     } catch (e) { wmsg.textContent = 'Could not add: ' + e.message; }
   };
   const searchOnline = async () => {
     wr.innerHTML = ''; wmsg.textContent = 'Searching…';
     try {
-      const j = await (await fetch('https://api.iconify.design/search?limit=64&query=' + encodeURIComponent(wq.value || 'app'))).json();
-      wmsg.textContent = j.icons && j.icons.length ? 'Click an icon to use it' : 'Nothing found';
-      (j.icons || []).forEach(n => { const [pre, name] = n.split(':'); const u = `https://api.iconify.design/${pre}/${name}.svg?height=128&color=%23ffffff`;
-        const d = el('div', { title: n }); d.append(el('img', { src: u, style: 'width:26px;height:26px' })); d.onclick = () => setImageFrom(u, false); wr.append(d); });
+      const j = await (await fetch('https://api.iconify.design/search?limit=96&query=' + encodeURIComponent(wq.value || 'app') + (wset.value ? '&prefixes=' + wset.value : ''))).json();
+      let list = j.icons || [];
+      if (!list.length && wset.value) {   // some sets (e.g. 3D emoji) are not in Iconify's search index: filter the set's own icon list instead
+        const qq = (wq.value || '').toLowerCase().trim().replace(/\s+/g, '-');
+        for (const pre of wset.value.split(',').slice(0, 4)) {
+          try { const c = await (await fetch('https://api.iconify.design/collection?prefix=' + pre)).json();
+            [...(c.uncategorized || []), ...Object.values(c.categories || {}).flat()].filter(n => n.includes(qq)).slice(0, 60).forEach(n => list.push(pre + ':' + n)); } catch (e) {}
+        }
+      }
+      wmsg.textContent = list.length ? 'Click an icon to use it' : 'Nothing found - try another word or icon set';
+      list.forEach(n => { const d = el('div', { title: n, style: 'padding:5px;font-size:0' }); d.append(el('img', { src: iconUrl(n, 64), style: 'width:34px;height:34px;object-fit:contain' })); d.onclick = () => setImageFrom(iconUrl(n, 256), false); wr.append(d); });
     } catch (e) { wmsg.textContent = 'Search failed (is the PC online?): ' + e.message; }
   };
   const site = async () => {
@@ -472,9 +508,16 @@ function drawPanel() {
     setImageFrom(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(d)}&sz=128`, true);
   };
   wq.onkeydown = e => { if (e.key === 'Enter') searchOnline(); };
-  p.append(el('hr'), el('b', { textContent: 'Find icon online' }), el('div', { className: 'row', style: 'margin-top:6px' }, wq),
-    el('div', { className: 'row', style: 'margin-top:6px' }, el('button', { textContent: '🔍 Search icons', onclick: searchOnline }), el('button', { textContent: '🌐 Website icon (Google)', onclick: site })), wmsg, wr, el('hr'));
-
+  const fpath = el('input', { type: 'text', placeholder: 'C:\\Games\\MyGame\\game.exe  (program, shortcut or any file)', value: b.action && b.action.type === 'launch' ? (b.action.target || '') : '' });
+  const useFile = async () => {
+    wmsg.textContent = 'Reading the icon…';
+    try { const r = await fetch('/api/file-icon?path=' + encodeURIComponent(fpath.value)); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); b.image = 'data:image/png;base64,' + j.icon; b.widget = null; changed(); wmsg.textContent = ''; }
+    catch (e) { wmsg.textContent = 'Could not get the icon: ' + e.message; }
+  };
+  p.append(el('hr'), el('b', { textContent: 'More creative icons (online)' }), el('div', { className: 'row', style: 'margin-top:6px' }, wq), el('div', { className: 'row', style: 'margin-top:6px' }, wset),
+    el('div', { className: 'row', style: 'margin-top:6px' }, el('button', { textContent: '🔍 Search icons', onclick: searchOnline }), el('button', { textContent: '🌐 Website icon (Google)', onclick: site })), wmsg, wr,
+    el('div', { className: 'hint', style: 'margin-top:10px', textContent: 'Real icon of a program on this PC:' }), el('div', { className: 'row' }, fpath), el('button', { textContent: '🖼 Use this file\'s icon', style: 'margin-top:6px', onclick: useFile }),
+    el('div', { className: 'hint', textContent: 'Apps added from the Apps list already use their real icon.' }), el('hr'));
   const colorRow = (label, key) => { const c = el('input', { type: 'color', value: b[key] }); c.oninput = () => { b[key] = c.value; changed(true); };
     return field(label, el('div', { className: 'sw' }, PALETTE.map(h => { const i = el('i'); i.style.background = h; i.onclick = () => { b[key] = h; changed(); }; return i; }), c)); };
   p.append(colorRow(L.style === 'neon' ? 'Border / gradient start' : 'Color', 'color1'));
@@ -543,6 +586,8 @@ $('profRen').onclick = () => { const n = prompt('Rename profile', prof().name); 
 $('profDel').onclick = () => { if (L.profiles.length < 2) return alert('You need at least one profile.'); if (!confirm('Delete profile "' + prof().name + '"?')) return; const id = prof().id; L.profiles.splice(pi, 1); if (L.activeProfile === id) L.activeProfile = L.profiles[0].id; pi = 0; gi = 0; sel = -1; changed(); };
 $('profDefault').onclick = () => { L.activeProfile = prof().id; changed(); };
 $('styleSel').onchange = e => { L.style = e.target.value; changed(); };
+$('iconStyle').onchange = e => { L.iconStyle = e.target.value; changed(true); };
+$('colorizeAll').onclick = () => { L.profiles.forEach(pf => pf.pages.forEach(pg => (pg.slots || []).forEach(s => { if (s) applyEmoji(s); }))); L.iconStyle = 'emoji'; changed(); };
 $('showLabels').onchange = e => { L.showLabels = e.target.checked; changed(true); };
 $('keyAlpha').oninput = e => { L.keyAlpha = +e.target.value; changed(true); };
 $('keyBlur').oninput = e => { L.keyBlur = +e.target.value; changed(true); };

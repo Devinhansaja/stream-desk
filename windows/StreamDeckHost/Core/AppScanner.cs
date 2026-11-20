@@ -95,7 +95,7 @@ public static class AppScanner
                 var id = Regex.Match(txt, "\"appid\"\\s+\"(\\d+)\"").Groups[1].Value;
                 var name = Regex.Match(txt, "\"name\"\\s+\"(.+?)\"").Groups[1].Value;
                 if (id == "" || name == "" || id == "228980") continue; // redistributables
-                yield return new InstalledApp("steam:" + id, name, "game", "steam://rungameid/" + id, null);
+                yield return new InstalledApp("steam:" + id, name, "game", "steam://rungameid/" + id, SteamIcon(steam, id));
             }
         }
     }
@@ -106,7 +106,7 @@ public static class AppScanner
         try
         {
             var psi = new ProcessStartInfo("powershell.exe",
-                "-NoProfile -NonInteractive -Command \"Get-StartApps | ConvertTo-Json -Compress\"")
+                "-NoProfile -NonInteractive -Command \"[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-StartApps | ConvertTo-Json -Compress\"")
             { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true, StandardOutputEncoding = Encoding.UTF8 };
             using var p = Process.Start(psi)!;
             var output = p.StandardOutput.ReadToEnd();
@@ -122,7 +122,7 @@ public static class AppScanner
                 var appId = it.GetProperty("AppID").GetString();
                 // Desktop shortcuts have path-like ids and are already found via Start Menu; keep Store (PackageFamily!App) ids.
                 if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(appId) || !appId.Contains('!')) continue;
-                results.Add(new InstalledApp("uwp:" + ShortId(appId), name, "store", "shell:AppsFolder\\" + appId, null));
+                results.Add(new InstalledApp("uwp:" + ShortId(appId), name, "store", "shell:AppsFolder\\" + appId, IconForStoreApp(appId)));
             }
         }
         catch { }
@@ -161,8 +161,8 @@ public static class AppScanner
                 try
                 {
                     using var icon = path.EndsWith(".ico", StringComparison.OrdinalIgnoreCase)
-                        ? new Icon(path, 64, 64)
-                        : Icon.ExtractIcon(path, idx, 64);
+                        ? new Icon(path, 128, 128)
+                        : Icon.ExtractIcon(path, idx, 128);
                     if (icon == null) continue;
                     return ToPng(icon);
                 }
@@ -176,16 +176,86 @@ public static class AppScanner
     static string ToPng(Icon icon)
     {
         using var src = icon.ToBitmap();
-        using var bmp = new Bitmap(64, 64, PixelFormat.Format32bppArgb);
+        using var bmp = new Bitmap(128, 128, PixelFormat.Format32bppArgb);
         using (var g = Graphics.FromImage(bmp))
         {
             g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-            g.DrawImage(src, 0, 0, 64, 64);
+            g.DrawImage(src, 0, 0, 128, 128);
         }
         using var ms = new MemoryStream();
         bmp.Save(ms, ImageFormat.Png);
         return Convert.ToBase64String(ms.ToArray());
     }
+    // ---------------------------------------------------------------- icons for things that are not plain programs
+    static string SquarePng(Image src, bool fromTop)
+    {
+        int side = Math.Min(src.Width, src.Height);
+        int sx = (src.Width - side) / 2, sy = fromTop ? Math.Min((src.Height - side) / 3, src.Height - side) : (src.Height - side) / 2;
+        using var bmp = new Bitmap(128, 128, PixelFormat.Format32bppArgb);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.DrawImage(src, new Rectangle(0, 0, 128, 128), new Rectangle(sx, sy, side, side), GraphicsUnit.Pixel);
+        }
+        using var ms = new MemoryStream(); bmp.Save(ms, ImageFormat.Png);
+        return Convert.ToBase64String(ms.ToArray());
+    }
+
+    /// <summary>Steam game cover from Steam's local library cache (no internet needed): capsule, else header, else the 32px icon.</summary>
+    static string? SteamIcon(string steamPath, string appId)
+    {
+        try
+        {
+            var dir = Path.Combine(steamPath, "appcache", "librarycache", appId);
+            if (!Directory.Exists(dir)) return null;
+            string? Find(params string[] names) { foreach (var n in names) { var f = Directory.EnumerateFiles(dir, n, SearchOption.AllDirectories).FirstOrDefault(); if (f != null) return f; } return null; }
+            var file = Find("library_capsule.jpg", "library_600x900.jpg") ?? Find("library_header.jpg", "header.jpg") ?? Directory.EnumerateFiles(dir, "*.jpg").FirstOrDefault();
+            if (file == null) return null;
+            using var img = Image.FromFile(file);
+            return SquarePng(img, fromTop: img.Height > img.Width);
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Microsoft Store / UWP app: the same tile logo the Start menu shows.</summary>
+    static string? IconForStoreApp(string appUserModelId)
+    {
+        try
+        {
+            int bang = appUserModelId.IndexOf('!'); if (bang < 0) return null;
+            var pm = new Windows.Management.Deployment.PackageManager();
+            var pkg = pm.FindPackagesForUser("", appUserModelId[..bang]).FirstOrDefault(); if (pkg == null) return null;
+            var entries = pkg.GetAppListEntriesAsync().AsTask().GetAwaiter().GetResult();
+            var entry = entries.FirstOrDefault(x => x.AppUserModelId == appUserModelId) ?? entries.FirstOrDefault(); if (entry == null) return null;
+            var stream = entry.DisplayInfo.GetLogo(new Windows.Foundation.Size(128, 128)).OpenReadAsync().AsTask().GetAwaiter().GetResult();
+            using var s = stream.AsStreamForRead();
+            using var img = Image.FromStream(s);
+            using var bmp = new Bitmap(128, 128, PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                float k = Math.Min(128f / img.Width, 128f / img.Height); float w = img.Width * k, h = img.Height * k;
+                g.DrawImage(img, (128 - w) / 2, (128 - h) / 2, w, h);
+            }
+            using var ms = new MemoryStream(); bmp.Save(ms, ImageFormat.Png);
+            return Convert.ToBase64String(ms.ToArray());
+        }
+        catch { return null; }
+    }
+
+    /// <summary>The icon of any file on this PC (program, shortcut, document), 128px PNG as base64.</summary>
+    public static string? IconForPath(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return null;
+            if (path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) return IconForShortcut(path) ?? IconFor(path);
+            try { using var big = path.EndsWith(".ico", StringComparison.OrdinalIgnoreCase) ? new Icon(path, 128, 128) : Icon.ExtractIcon(path, 0, 128); if (big != null) return ToPng(big); } catch { }
+            return IconFor(path);
+        }
+        catch { return null; }
+    }
+
     static string? IconFor(string path)
     {
         try
