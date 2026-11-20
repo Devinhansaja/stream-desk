@@ -148,7 +148,9 @@
         <button id="sizeAll" class="wide">Apply this size to all pages</button>
         <label class="f" style="margin-top:8px">Open this page by itself when this program is in front</label>
         <input type="text" id="autoApp" placeholder="e.g. photoshop, afterfx (program names, comma separated)" title="Program name as shown in Task Manager, without .exe">
-        <div class="grid2" style="margin-top:8px"><button id="pgRen"title="Rename this page">✏️ Rename</button><button id="pgDel" class="danger" title="Delete this page">🗑 Delete</button></div>
+        <div class="grid2" style="margin-top:6px"><button id="autoPick" title="Open the program on your PC first, then pick it here">🔍 Pick a running program</button><label class="f" style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" id="autoPages"> Auto-switch on</label></div>
+        <div id="autoList" style="display:none;max-height:190px;overflow:auto;margin-top:6px"></div>
+        <div class="grid2" style="margin-top:8px"><button id="pgRen" title="Rename this page">✏️ Rename</button><button id="pgDel" class="danger" title="Delete this page">🗑 Delete</button></div>
       </div></details>
 
       <details class="sec" data-k="look"><summary><i>🎨</i>Keys &amp; look</summary><div class="secbody">
@@ -418,12 +420,12 @@ function draw(panel = true) {
   L.profiles.forEach((p, i) => pl.append(el('div', { className: 'prow' + (i === pi ? ' on' : ''), textContent: p.name + (p.id === L.activeProfile ? '  ★' : ''), title: p.id === L.activeProfile ? 'Phone default' : '', onclick: () => { pi = i; gi = 0; sel = -1; draw(); } })));
   const tabs = $('pageTabs'); tabs.innerHTML = '';
   let vis = 0;
-  prof().pages.forEach((p, i) => tabs.append(el('div', { className: 'tab' + (i === gi ? ' on' : '') + (p.hidden ? ' folder' : ''), textContent: p.hidden ? '📁 ' + p.name : (p.kind ? (++vis, WKIND[p.kind] ? WKIND[p.kind].icon : '▣') : String(++vis)), title: p.name + (p.hidden ? ' (folder)' : ''), onclick: () => { gi = i; sel = -1; draw(); } })));
+  prof().pages.forEach((p, i) => tabs.append(el('div', { className: 'tab' + (i === gi ? ' on' : '') + (p.hidden ? ' folder' : ''), textContent: p.hidden ? '📁 ' + p.name : (p.kind ? (++vis, WKIND[p.kind] ? WKIND[p.kind].icon : '▣') : (p.appIcon ? (++vis, '') : String(++vis))), title: p.name + (p.hidden ? ' (folder)' : '') + (p.autoApp ? '  —  opens with ' + p.autoApp : ''), onclick: () => { gi = i; sel = -1; draw(); } }, !p.hidden && !p.kind && p.appIcon ? el('img', { src: 'data:image/png;base64,' + p.appIcon, style: 'width:20px;height:20px;border-radius:5px;display:block' }) : [])));
   tabs.append(el('div', { className: 'tab', textContent: '+', title: 'Add page', onclick: () => { prof().pages.push(newPage('Page ' + (prof().pages.length + 1), 4, 4)); gi = prof().pages.length - 1; sel = -1; changed(); } }));
   { const s = el('select', { className: 'tab', title: 'Add a widget page (clock, lyrics, YouTube, PC screen)', style: 'width:auto' }, el('option', { value: '', textContent: '＋ Widget page ▾' }), Object.entries(WKIND).map(([k, v]) => el('option', { value: k, textContent: v.icon + '  ' + v.name })));
     s.onchange = () => { if (!s.value) return; const k = s.value, np = newPage(WKIND[k].name, 1, 1); np.kind = k; Object.assign(np, WKIND[k].defaults || {}); prof().pages.push(np); gi = prof().pages.length - 1; sel = -1; changed(); };
     tabs.append(s); }
-  const pg = page(); $('cols').value = pg.cols; $('rows').value = pg.rows; if (document.activeElement !== $('autoApp')) $('autoApp').value = pg.autoApp || ''; $('styleSel').value = L.style === 'neon' ? 'neon' : 'flat';
+  const pg = page(); $('cols').value = pg.cols; $('rows').value = pg.rows; if (document.activeElement !== $('autoApp')) $('autoApp').value = pg.autoApp || ''; $('autoPages').checked = L.autoPages !== false; $('styleSel').value = L.style === 'neon' ? 'neon' : 'flat';
   const bgKey = JSON.stringify(L.background || null);
   if (bgKey !== window.lastBg) { window.lastBg = bgKey; applyBg($('bgLayer'), L.background, L.bgDim); } else setBgDim($('bgLayer'), L.bgDim);
   $('iconStyle').value = L.iconStyle === 'emoji' ? 'emoji' : 'classic';
@@ -682,7 +684,22 @@ $('bgFile').onchange = async e => {
 $('pgDel').onclick = () => { if (prof().pages.length < 2) return alert('A profile needs at least one page.'); if (!confirm('Delete page "' + page().name + '"?')) return; prof().pages.splice(gi, 1); gi = 0; sel = -1; changed(); };
 const sizeChange = () => { const c = Math.max(1, Math.min(12, +$('cols').value || 1)), r = Math.max(1, Math.min(12, +$('rows').value || 1)); resizePage(page(), c, r); sel = -1; changed(); };
 [[4,3],[5,3],[4,4],[6,4],[8,4],[8,6]].forEach(([c, r]) => $('sizePresets').append(el('button', { textContent: `${c}×${r}`, title: `${c * r} keys`, onclick: () => { resizePage(page(), c, r); sel = -1; changed(); } })));
-$('autoApp').oninput = e => { const v = e.target.value.trim(); if (v) page().autoApp = v; else delete page().autoApp; changed(true); };
+$('autoApp').oninput = e => { const v = e.target.value.trim(); if (v) page().autoApp = v; else { delete page().autoApp; delete page().appIcon; } changed(true); };
+$('autoApp').onchange = async e => {
+  const v = e.target.value.trim(), pg = page(); if (!v) return;
+  try { const r = await fetch('/api/program-icon?q=' + encodeURIComponent(v)); if (r.ok) { pg.appIcon = (await r.json()).icon; changed(); } else { delete pg.appIcon; changed(true); showToast('Icon not found yet. Open the program once, or use "Pick a running program".'); } } catch (x) {}
+};
+$('autoPages').onchange = e => { L.autoPages = e.target.checked; changed(true); };
+$('autoPick').onclick = async () => {
+  const box = $('autoList'); box.style.display = ''; box.textContent = 'Looking for open programs…';
+  let list = []; try { list = await (await fetch('/api/running-apps')).json(); } catch (x) {}
+  box.innerHTML = ''; if (!list.length) { box.textContent = 'No open programs found.'; return; }
+  list.forEach(a => box.append(el('div', { className: 'tab', style: 'display:flex;gap:8px;align-items:center;margin:2px 0;cursor:pointer;width:auto', title: a.title, onclick: () => {
+    const pg = page(); pg.autoApp = a.process; if (a.icon) pg.appIcon = a.icon; else delete pg.appIcon;
+    if (/^(Page \d+|Apps|Games|Streaming|Home)$/i.test(pg.name || '')) pg.name = a.title.split(/ [-–—] /).pop().slice(0, 24) || a.process;
+    box.style.display = 'none'; changed();
+  } }, a.icon ? el('img', { src: 'data:image/png;base64,' + a.icon, style: 'width:22px;height:22px;border-radius:5px' }) : el('span', { textContent: '▣' }), el('span', { textContent: a.process + '  —  ' + a.title.slice(0, 40) }))));
+};
 $('sizeAll').onclick = () => { const p = page(); prof().pages.forEach(pg => { if (pg !== p) resizePage(pg, p.cols, p.rows); }); changed(); };$('cols').onchange = sizeChange; $('rows').onchange = sizeChange;
 
 // ------------------------------------------------------------------ polish: toolbox icons, toast, shortcuts, live phone preview

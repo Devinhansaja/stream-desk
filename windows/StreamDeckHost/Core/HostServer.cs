@@ -198,6 +198,15 @@ public sealed class HostServer : IDisposable
         _ = Task.Run(ScreenLoop);
         Game.Start();
         _ = Task.Run(ForegroundLoop);
+        _ = Task.Run(async () =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                try { await Task.Delay(8000, cts.Token); layout.FillProgramIcons(); await Task.Delay(52000, cts.Token); }
+                catch (OperationCanceledException) { break; }
+                catch { }
+            }
+        });
         WriteDevPairing();
     }
 

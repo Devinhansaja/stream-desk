@@ -65,6 +65,8 @@
   #dot { position:fixed; top:calc(2px + env(safe-area-inset-top)); right:calc(2px + env(safe-area-inset-right)); width:9px; height:9px; border-radius:50%; background:#ff5252; z-index:6; pointer-events:none; }
   #dot.on { background:#22e58b; } #dot.mid { background:#ffc400; }
   #dots { position:fixed; left:50%; bottom:6px; transform:translateX(-50%); display:flex; gap:7px; padding:5px 9px; border-radius:12px; background:#000000a0; opacity:0; transition:opacity .3s; pointer-events:none; z-index:5; }
+  .apb { position:absolute; top:5px; right:8px; display:flex; align-items:center; gap:6px; padding:3px 10px 3px 4px; border-radius:14px; background:#000000a0; pointer-events:none; z-index:3; font-size:12px; }
+  .apb img { width:20px; height:20px; border-radius:5px; } #dots img.dic { width:20px; height:20px; border-radius:5px; opacity:.45; margin:-6px 0; } #dots img.dic.on { opacity:1; }
   #dots.show { opacity:1; } #dots i { width:7px; height:7px; border-radius:50%; background:#ffffff40; display:block; } #dots i.on { background:#fff; }
   #banner { position:fixed; left:0; right:0; top:0; padding:6px; text-align:center; font-size:13px; background:#b71c1ccc; display:none; z-index:7; }
   #banner.show { display:block; }
@@ -223,7 +225,12 @@ function render() {
       n.style.gridRow = `${r + 1} / span ${Math.max(1, Math.min(b ? b.rowSpan || 1 : 1, pg.rows - r))}`;
       el.appendChild(n);
     });
-    host.appendChild(el); dots.appendChild(document.createElement('i'));
+    if (pg.autoApp && pg.appIcon) {
+      el.style.position = 'relative';
+      const bd = document.createElement('div'); bd.className = 'apb'; const im = document.createElement('img'); im.src = 'data:image/png;base64,' + pg.appIcon; const nm = document.createElement('b'); nm.textContent = pg.name || ''; bd.append(im, nm); el.append(bd);
+    }
+    host.appendChild(el);
+    if (pg.autoApp && pg.appIcon) { const di = document.createElement('img'); di.src = 'data:image/png;base64,' + pg.appIcon; di.className = 'dic'; dots.appendChild(di); } else dots.appendChild(document.createElement('i'));
   });
   dots.style.display = shown.length > 1 ? 'flex' : 'none';
   curPage = Math.min(curPage, shown.length - 1);
@@ -343,7 +350,7 @@ function renderGame() {
 // ---- Auto page for a program: pages with "autoApp" open when that program is in front ----------------
 let fgApp = '', fgAutoIdx = -1, fgPrev = 0;
 function autoAppPage() {
-  if (PREVIEW || folderId || !fgApp) return;
+  if (PREVIEW || folderId || !fgApp || (layout && layout.autoPages === false)) return;
   const idx = shownPages.findIndex(p => p.autoApp && p.autoApp.toLowerCase().split(',').some(a => a.trim() && fgApp.includes(a.trim())));
   const host = $('pages');
   const go = i => { curPage = i; host.scrollTo({ left: i * host.clientWidth }); markDots(); activate(); };

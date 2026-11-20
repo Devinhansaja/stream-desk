@@ -55,7 +55,7 @@ public static class Native
             ["menu"] = 0x5D,
             ["volumeup"] = 0xAF, ["volumedown"] = 0xAE, ["volumemute"] = 0xAD, ["mute"] = 0xAD,
             ["playpause"] = 0xB3, ["nexttrack"] = 0xB0, ["next"] = 0xB0, ["prevtrack"] = 0xB1, ["prev"] = 0xB1, ["stop"] = 0xB2,
-            ["plus"] = 0xBB, ["minus"] = 0xBD, ["comma"] = 0xBC, ["period"] = 0xBE, ["slash"] = 0xBF, ["backtick"] = 0xC0, ["lbracket"] = 0xDB, ["rbracket"] = 0xDD, ["[" ] = 0xDB, ["]"] = 0xDD,
+            ["plus"] = 0xBB, ["minus"] = 0xBD, ["comma"] = 0xBC, ["period"] = 0xBE, ["slash"] = 0xBF, ["backtick"] = 0xC0, ["backslash"] = 0xDC, ["lbracket"] = 0xDB, ["rbracket"] = 0xDD, ["[" ] = 0xDB, ["]"] = 0xDD,
         };
         for (int i = 1; i <= 24; i++) m["f" + i] = (ushort)(0x6F + i);
         for (char c = 'a'; c <= 'z'; c++) m[c.ToString()] = (ushort)char.ToUpperInvariant(c);

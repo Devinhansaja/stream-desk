@@ -243,6 +243,71 @@ public static class AppScanner
         catch { return null; }
     }
 
+    static readonly Dictionary<string, string> Aliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["resolve"] = "davinci resolve", ["afterfx"] = "after effects", ["adobe premiere pro"] = "premiere pro", ["photoshop"] = "photoshop",
+        ["illustrator"] = "illustrator", ["capcut"] = "capcut", ["blender"] = "blender", ["lightroom"] = "lightroom",
+    };
+
+    static bool ProcessExe(string token, out string? exe)
+    {
+        exe = null;
+        try
+        {
+            foreach (var p in Process.GetProcesses())
+            {
+                try
+                {
+                    using (p)
+                    {
+                        if (!p.ProcessName.Contains(token, StringComparison.OrdinalIgnoreCase)) continue;
+                        var f = p.MainModule?.FileName;
+                        if (!string.IsNullOrEmpty(f)) { exe = f; return true; }
+                    }
+                }
+                catch { }
+            }
+        }
+        catch { }
+        return false;
+    }
+
+    /// <summary>The real icon of a program given its process name(s) ("photoshop, afterfx"): from the running program, else from the Start Menu.</summary>
+    public static string? IconForProgram(string names)
+    {
+        foreach (var raw in names.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (ProcessExe(raw, out var exe)) { var i = IconForPath(exe!); if (i != null) return i; }
+            var want = Aliases.TryGetValue(raw, out var al) ? al : raw;
+            var app = Scan(false).FirstOrDefault(a => a.Name.Contains(want, StringComparison.OrdinalIgnoreCase) && a.IconPng != null);
+            if (app != null) return app.IconPng;
+        }
+        return null;
+    }
+
+    static readonly HashSet<string> NotPrograms = new(StringComparer.OrdinalIgnoreCase) { "streamdeckhost", "explorer", "applicationframehost", "textinputhost", "searchhost", "startmenuexperiencehost", "shellexperiencehost", "systemsettings", "widgets" };
+
+    /// <summary>Programs with a visible window right now (process name, window title, icon) so the editor can offer them.</summary>
+    public static List<(string Process, string Title, string? Icon)> RunningPrograms()
+    {
+        var res = new List<(string, string, string?)>(); var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in Process.GetProcesses())
+        {
+            try
+            {
+                using (p)
+                {
+                    if (p.MainWindowHandle == IntPtr.Zero || string.IsNullOrWhiteSpace(p.MainWindowTitle) || NotPrograms.Contains(p.ProcessName) || !seen.Add(p.ProcessName)) continue;
+                    var f = p.MainModule?.FileName;
+                    res.Add((p.ProcessName.ToLowerInvariant(), p.MainWindowTitle, f != null ? IconForPath(f) : null));
+                }
+            }
+            catch { }
+        }
+        res.Sort((a, b) => string.Compare(a.Item1, b.Item1, StringComparison.OrdinalIgnoreCase));
+        return res;
+    }
+
     /// <summary>The icon of any file on this PC (program, shortcut, document), 128px PNG as base64.</summary>
     public static string? IconForPath(string path)
     {

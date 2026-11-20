@@ -223,6 +223,24 @@ public static class WebEndpoints
             return icon == null ? Results.NotFound(new { error = "No icon found (is the path right?)" }) : Results.Text(new JsonObject { ["icon"] = icon }.ToJsonString(), "application/json");
         });
 
+        app.MapGet("/api/program-icon", async (HttpContext c) =>
+        {
+            if (!IsLocalEditor(c, port)) return Results.StatusCode(403);
+            var q = c.Request.Query["q"].ToString().Trim();
+            if (q.Length == 0) return Results.BadRequest(new { error = "missing q" });
+            var icon = await Task.Run(() => AppScanner.IconForProgram(q));
+            return icon == null ? Results.NotFound(new { error = "No icon found (open the program once, or pick it from the running list)" }) : Results.Text(new JsonObject { ["icon"] = icon }.ToJsonString(), "application/json");
+        });
+
+        app.MapGet("/api/running-apps", async (HttpContext c) =>
+        {
+            if (!IsLocalEditor(c, port)) return Results.StatusCode(403);
+            var list = await Task.Run(() => AppScanner.RunningPrograms());
+            var arr = new JsonArray();
+            foreach (var a in list) arr.Add(new JsonObject { ["process"] = a.Process, ["title"] = a.Title, ["icon"] = a.Icon });
+            return Results.Text(arr.ToJsonString(), "application/json");
+        });
+
         app.MapGet("/api/obs", (HttpContext c) =>
             IsLocalEditor(c, port) ? Results.Text(server.Obs.Snapshot().ToJsonString(), "application/json") : Results.StatusCode(403));
 

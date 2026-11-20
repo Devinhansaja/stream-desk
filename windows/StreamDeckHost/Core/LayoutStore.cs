@@ -141,6 +141,40 @@ public sealed class LayoutStore
             Hk("Zoom in", "zoom_in", o1, o2, "ctrl+plus"), Hk("Zoom out", "zoom_out", o1, o2, "ctrl+minus"), Hk("Copy", "content_copy", o1, o2, "ctrl+c"), Hk("Paste", "content_paste", o1, o2, "ctrl+v"));
     }
 
+    /// <summary>Video / 3D editors: DaVinci Resolve, CapCut, Blender (open by themselves like the Adobe pages).</summary>
+    public static IEnumerable<JsonObject> CreativePages()
+    {
+        JsonObject P(string name, string apps, params JsonObject[] keys) { var p = Page(name, 6, 4, keys); p["autoApp"] = apps; return p; }
+        const string d1 = "#ff6b35", d2 = "#3a1608", c1 = "#e8e8e8", c2 = "#2b2b2b", g1 = "#f5792a", g2 = "#2d3e50";
+        yield return P("DaVinci Resolve", "resolve",
+            Hk("Play / Pause", "play_arrow", d1, d2, "space"), Hk("Split clip", "content_cut", d1, d2, "ctrl+backslash"), Hk("Blade tool", "content_cut", d1, d2, "b"), Hk("Select tool", "near_me", d1, d2, "a"), Hk("Undo", "undo", d1, d2, "ctrl+z"), Hk("Redo", "redo", d1, d2, "ctrl+shift+z"),
+            Hk("Save", "save", d1, d2, "ctrl+s"), Hk("Mark in", "first_page", d1, d2, "i"), Hk("Mark out", "last_page", d1, d2, "o"), Hk("Marker", "bookmark", d1, d2, "m"), Hk("Delete", "delete", d1, d2, "delete"), Hk("Ripple delete", "delete_sweep", d1, d2, "shift+delete"),
+            Hk("Reverse (J)", "fast_rewind", d1, d2, "j"), Hk("Stop (K)", "stop", d1, d2, "k"), Hk("Forward (L)", "fast_forward", d1, d2, "l"), Hk("Frame back", "skip_previous", d1, d2, "left"), Hk("Frame forward", "skip_next", d1, d2, "right"), Hk("Fit timeline", "fit_screen", d1, d2, "shift+z"),
+            Hk("Cut page", "movie", d1, d2, "shift+3"), Hk("Edit page", "video_library", d1, d2, "shift+4"), Hk("Color page", "palette", d1, d2, "shift+6"), Hk("Audio page", "graphic_eq", d1, d2, "shift+7"), Hk("Deliver page", "ios_share", d1, d2, "shift+8"), Hk("Zoom in", "zoom_in", d1, d2, "plus"));
+        yield return P("CapCut", "capcut",
+            Hk("Play / Pause", "play_arrow", c1, c2, "space"), Hk("Split", "content_cut", c1, c2, "ctrl+b"), Hk("Delete", "delete", c1, c2, "delete"), Hk("Undo", "undo", c1, c2, "ctrl+z"), Hk("Redo", "redo", c1, c2, "ctrl+shift+z"), Hk("Export", "ios_share", c1, c2, "ctrl+e"),
+            Hk("Copy", "content_copy", c1, c2, "ctrl+c"), Hk("Paste", "content_paste", c1, c2, "ctrl+v"), Hk("Select all", "select_all", c1, c2, "ctrl+a"), Hk("Frame back", "skip_previous", c1, c2, "left"), Hk("Frame forward", "skip_next", c1, c2, "right"), Hk("Save", "save", c1, c2, "ctrl+s"));
+        yield return P("Blender", "blender",
+            Hk("Grab", "open_with", g1, g2, "g"), Hk("Rotate", "rotate_right", g1, g2, "r"), Hk("Scale", "aspect_ratio", g1, g2, "s"), Hk("Add", "add_box", g1, g2, "shift+a"), Hk("Delete", "delete", g1, g2, "x"), Hk("Edit mode", "edit", g1, g2, "tab"),
+            Hk("Select all", "select_all", g1, g2, "a"), Hk("Undo", "undo", g1, g2, "ctrl+z"), Hk("Redo", "redo", g1, g2, "ctrl+shift+z"), Hk("Save", "save", g1, g2, "ctrl+s"), Hk("Render", "movie_filter", g1, g2, "f12"), Hk("Play", "play_arrow", g1, g2, "space"));
+    }
+
+    /// <summary>Gives pages that open for a program the program's real icon (kept in the page as "appIcon").</summary>
+    public void FillProgramIcons()
+    {
+        var snap = Snapshot(); bool dirty = false;
+        if (snap["profiles"] is not JsonArray profs) return;
+        foreach (var pr in profs)
+            if (pr?["pages"] is JsonArray pages)
+                foreach (var pg in pages)
+                    if (pg is JsonObject o && o["autoApp"] is JsonValue av && av.TryGetValue<string>(out var apps) && !string.IsNullOrWhiteSpace(apps) && o["appIcon"] == null)
+                    {
+                        var icon = AppScanner.IconForProgram(apps);
+                        if (icon != null) { o["appIcon"] = icon; dirty = true; }
+                    }
+        if (dirty) Save(snap);
+    }
+
     /// <summary>Existing layouts get the Discord page once (deleting it afterwards sticks).</summary>
     void EnsureDiscordPage()
     {
@@ -151,6 +185,11 @@ public sealed class LayoutStore
             {
                 if (layout["gameAdded"]?.GetValue<bool>() != true) { layout["gameAdded"] = true; dirty = true; if (!pgs.Any(p => p?["kind"]?.GetValue<string>() == "gamestats")) pgs.Add(GameStatsPage()); }
                 if (layout["adobeAdded"]?.GetValue<bool>() != true) { layout["adobeAdded"] = true; dirty = true; if (!pgs.Any(p => p?["autoApp"] != null)) foreach (var ap in AdobePages()) pgs.Add(ap); }
+            }
+            if (layout["profiles"] is JsonArray pf2 && pf2.Count > 0 && pf2[0]?["pages"] is JsonArray pgs2 && layout["creativeAdded"]?.GetValue<bool>() != true)
+            {
+                layout["creativeAdded"] = true; dirty = true;
+                foreach (var cp in CreativePages()) if (!pgs2.Any(p => p?["autoApp"]?.GetValue<string>() == cp["autoApp"]!.GetValue<string>())) pgs2.Add(cp);
             }
             if (dirty) { try { File.WriteAllText(FilePath, layout.ToJsonString()); } catch { } }
             if (layout["discordAdded"]?.GetValue<bool>() == true && layout["obsAdded"]?.GetValue<bool>() == true) return;
@@ -217,7 +256,8 @@ public sealed class LayoutStore
 
         var allPages = new JsonArray(home, stats, Page("Apps", 6, 4), Page("Games", 6, 4), Page("Streaming", 6, 4), Page("Page 6", 6, 4), DiscordPage(), ObsPage(), GameStatsPage());
         foreach (var ap in AdobePages()) allPages.Add(ap);
+        foreach (var cp in CreativePages()) allPages.Add(cp);
         var prof = new JsonObject { ["id"] = "default", ["name"] = "Default", ["pages"] = allPages };
-        return new JsonObject { ["version"] = 1, ["discordAdded"] = true, ["obsAdded"] = true, ["gameAdded"] = true, ["adobeAdded"] = true, ["style"] = "flat", ["background"] = null, ["keyAlpha"] = 0.55, ["keyBlur"] = 0, ["activeProfile"] = "default", ["profiles"] = new JsonArray(prof) };
+        return new JsonObject { ["version"] = 1, ["discordAdded"] = true, ["obsAdded"] = true, ["gameAdded"] = true, ["adobeAdded"] = true, ["creativeAdded"] = true, ["style"] = "flat", ["background"] = null, ["keyAlpha"] = 0.55, ["keyBlur"] = 0, ["activeProfile"] = "default", ["profiles"] = new JsonArray(prof) };
     }
 }
