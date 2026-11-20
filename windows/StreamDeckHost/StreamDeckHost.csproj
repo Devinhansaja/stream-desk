@@ -8,9 +8,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>StreamDeckHost</AssemblyName>
     <RootNamespace>StreamDeckHost</RootNamespace>
-    <Version>1.7.0</Version>
-    <AssemblyVersion>1.7.0.0</AssemblyVersion>
-    <FileVersion>1.7.0.0</FileVersion>
+    <Version>1.8.0</Version>
+    <AssemblyVersion>1.8.0.0</AssemblyVersion>
+    <FileVersion>1.8.0.0</FileVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <InvariantGlobalization>true</InvariantGlobalization>
     <ApplicationIcon>app.ico</ApplicationIcon>
@@ -27,7 +27,7 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
-    <PackageReference Include="QRCoder" Version="1.7.0" />
+    <PackageReference Include="QRCoder" Version="1.8.0" />
     <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
 

@@ -117,6 +117,16 @@
   .mx .mm { font-size:20px; background:none; border:0; color:#fff; padding:4px 6px; } .mx .mn { width:34%; font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .mx .mt { flex:1; height:26px; border-radius:13px; background:#ffffff22; overflow:hidden; touch-action:none; } .mx .mt i { display:block; height:100%; width:0; background:linear-gradient(90deg,#37d67a,#7bf1a8); }
   .mx .mv { width:2.4em; text-align:right; font-variant-numeric:tabular-nums; font-size:13px; opacity:.85; }
+  .obtns .b-studio.on { background:#3d2f78; border-color:#a78bfa; } .obtns .b-trans { background:#2d4f9e; border-color:#7aa2ff; } .obtns .b-replay.on { background:#8a5a00; border-color:#ffc400; } .obtns .b-save { border-color:#ffc400; }
+  .sc { position:relative; } .sc.prev { border-color:#ffc400; background:#3a3014; } .osc.st .sc.cur { border-color:#ff5c7c; background:#4a1626; box-shadow:0 0 14px #ff5c7c55; }
+  .sc[data-b]::after { content:attr(data-b); position:absolute; top:3px; right:6px; font-size:9px; letter-spacing:.08em; opacity:.85; }
+  .oit { display:flex; flex-direction:column; gap:6px; } .oempty { opacity:.5; font-size:13px; padding:4px 2px; }
+  .it { display:flex; align-items:center; gap:8px; background:#1c1c24; border-radius:12px; padding:6px 8px 6px 12px; } .it.hid .in { opacity:.45; text-decoration:line-through; }
+  .it .in { flex:1; font-size:14px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .it button { font-size:18px; background:#2b2b36; border:1px solid #ffffff22; border-radius:10px; color:#fff; padding:6px 10px; } .it .il.on { border-color:#ffc400; }
+  .otr { display:flex; flex-direction:column; gap:10px; } .otc { display:flex; flex-wrap:wrap; gap:8px; }
+  .tc { background:#26262f; border:2px solid #ffffff22; border-radius:12px; padding:9px 14px; font-weight:600; font-size:14px; } .tc.cur { border-color:#7aa2ff; background:#1d2d57; }
+  .otd { display:flex; align-items:center; gap:10px; font-size:13px; } .otd input { flex:1; } .otd b { width:4.5em; text-align:right; font-variant-numeric:tabular-nums; }
   #empty { margin:auto; text-align:center; color:#aaa; padding:30px; }
 </style>
 </head>
@@ -259,11 +269,17 @@ function widgetPage(pg) {
     el.append(w); setTimeout(renderDiscord, 0);  } else if (pg.kind === 'obs') {
     const w = document.createElement('div'); w.className = 'obw';
     w.innerHTML = '<div class="oh"><b>OBS</b><span class="os"></span></div>'
-      + '<div class="obtns"><button data-a="obs_stream_toggle" class="b-live"><b>Go live</b><small></small></button><button data-a="obs_record_toggle" class="b-rec"><b>Record</b><small></small></button><button data-a="obs_record_pause_toggle" class="b-pause"><b>Pause</b></button><button data-a="obs_virtualcam_toggle" class="b-vcam"><b>Virtual cam</b></button></div>'
-      + '<div class="osec">Scenes</div><div class="osc"></div><div class="osec">Audio mixer</div><div class="omx"></div>';
+      + '<div class="obtns"><button data-a="obs_stream_toggle" class="b-live"><b>Go live</b><small></small></button><button data-a="obs_record_toggle" class="b-rec"><b>Record</b><small></small></button><button data-a="obs_record_pause_toggle" class="b-pause"><b>Pause</b></button><button data-a="obs_virtualcam_toggle" class="b-vcam"><b>Virtual cam</b></button>'
+      + '<button data-a="obs_studio_toggle" class="b-studio"><b>Studio mode</b></button><button data-a="obs_transition" class="b-trans"><b>Transition ▶</b></button><button data-a="obs_replay_toggle" class="b-replay"><b>Replay buffer</b></button><button data-a="obs_replay_save" class="b-save"><b>Save replay</b></button></div>'
+      + '<div class="osec osl">Scenes</div><div class="osc"></div>'
+      + '<div class="osec osrc">Sources</div><div class="oit"></div>'
+      + '<div class="osec">Transitions</div><div class="otr"><div class="otc"></div><label class="otd"><span>Duration</span><input type="range" min="50" max="2000" step="50"><b></b></label></div>'
+      + '<div class="osec">Audio mixer</div><div class="omx"></div>';
     w.querySelectorAll('.obtns button').forEach(b => b.addEventListener('click', () => { native('h'); sendAct({ type: b.dataset.a }); }));
-    el.append(w); setTimeout(renderObs, 0);
-  } else if (pg.kind === 'screen') {
+    const dur = w.querySelector('.otd input'); let dl = 0;
+    dur.addEventListener('input', () => { w.querySelector('.otd b').textContent = dur.value + ' ms'; w._drag = true; const n = Date.now(); if (n - dl > 150) { dl = n; sendAct({ type: 'obs_transition_duration', ms: +dur.value }, true); } });
+    dur.addEventListener('change', () => { sendAct({ type: 'obs_transition_duration', ms: +dur.value }, true); setTimeout(() => { w._drag = false; }, 600); });
+    el.append(w); setTimeout(renderObs, 0);  } else if (pg.kind === 'screen') {
     const img = document.createElement('img'); img.className = 'scrw'; img.alt = ''; el.append(img);
     const m = document.createElement('div'); m.className = 'wmsg'; m.textContent = 'Connecting to PC screen…'; m.id = 'scrMsg'; el.append(m);
     bindScreenTouch(img);
@@ -298,14 +314,49 @@ function renderObs() {
     rec.classList.toggle('on', !!obs.recording); rec.querySelector('b').textContent = obs.recording ? 'Stop recording' : 'Record'; rec.querySelector('small').textContent = obs.recording ? ((obs.paused ? 'Paused  ' : '') + (obs.recTime || '')) : '';
     pau.style.display = obs.recording ? '' : 'none'; pau.querySelector('b').textContent = obs.paused ? 'Resume' : 'Pause';
     vc.classList.toggle('on', !!obs.vcam);
-    const sc = w.querySelector('.osc'), key = JSON.stringify([obs.scenes, obs.scene]);
-    if (sc._k !== key) { sc._k = key; sc.innerHTML = ''; obs.scenes.forEach(n => { const t = document.createElement('div'); t.className = 'sc' + (n === obs.scene ? ' cur' : ''); t.textContent = n; t.addEventListener('click', () => { native('h'); sendAct({ type: 'obs_scene', scene: n }); }); sc.append(t); }); }
+    q('obs_studio_toggle').classList.toggle('on', !!obs.studio);
+    q('obs_transition').style.display = obs.studio ? '' : 'none';
+    q('obs_replay_toggle').classList.toggle('on', !!obs.replay); q('obs_replay_toggle').querySelector('b').textContent = obs.replay ? 'Replay buffer on' : 'Replay buffer';
+    q('obs_replay_save').style.display = obs.replay ? '' : 'none';
+    // scenes: tap = go live, or pick the preview scene in Studio mode
+    const sc = w.querySelector('.osc'), key = JSON.stringify([obs.scenes, obs.scene, obs.studio, obs.preview]);
+    w.querySelector('.osl').textContent = obs.studio ? 'Scenes  (tap = preview, then Transition)' : 'Scenes';
+    if (sc._k !== key) {
+      sc._k = key; sc.innerHTML = ''; sc.classList.toggle('st', !!obs.studio);
+      obs.scenes.forEach(n => {
+        const t = document.createElement('div'); t.className = 'sc' + (n === obs.scene ? ' cur' : '') + (obs.studio && n === obs.preview ? ' prev' : ''); t.textContent = n;
+        if (n === obs.scene && obs.studio) t.dataset.b = 'LIVE'; else if (obs.studio && n === obs.preview) t.dataset.b = 'PREVIEW';
+        t.addEventListener('click', () => { native('h'); sendAct(obs.studio ? { type: 'obs_preview_scene', scene: n } : { type: 'obs_scene', scene: n }); });
+        sc.append(t);
+      });
+    }
+    // sources of the scene being edited: show / hide and lock
+    const it = w.querySelector('.oit'), ik = JSON.stringify([obs.items, obs.itemsScene]);
+    w.querySelector('.osrc').textContent = obs.itemsScene ? 'Sources in "' + obs.itemsScene + '"' : 'Sources';
+    if (it._k !== ik) {
+      it._k = ik; it.innerHTML = '';
+      if (!(obs.items || []).length) { const e = document.createElement('div'); e.className = 'oempty'; e.textContent = ok ? 'This scene has no sources yet' : ''; it.append(e); }
+      (obs.items || []).forEach(i => {
+        const r = document.createElement('div'); r.className = 'it' + (i.enabled ? '' : ' hid');
+        const n = document.createElement('div'); n.className = 'in'; n.textContent = (i.group ? '📁 ' : '') + i.name;
+        const eye = document.createElement('button'); eye.className = 'ie'; eye.textContent = i.enabled ? '👁' : '🚫'; eye.title = 'Show / hide';
+        eye.addEventListener('click', () => { native('h'); sendAct({ type: 'obs_item_enabled', scene: obs.itemsScene, id: i.id, value: !i.enabled }); });
+        const lk = document.createElement('button'); lk.className = 'il' + (i.locked ? ' on' : ''); lk.textContent = i.locked ? '🔒' : '🔓'; lk.title = 'Lock';
+        lk.addEventListener('click', () => { native('h'); sendAct({ type: 'obs_item_locked', scene: obs.itemsScene, id: i.id, value: !i.locked }); });
+        r.append(n, eye, lk); it.append(r);
+      });
+    }
+    // transitions
+    const tc = w.querySelector('.otc'), tk = JSON.stringify([obs.transitions, obs.transition]);
+    if (tc._k !== tk) { tc._k = tk; tc.innerHTML = ''; (obs.transitions || []).forEach(n => { const c = document.createElement('div'); c.className = 'tc' + (n === obs.transition ? ' cur' : ''); c.textContent = n; c.addEventListener('click', () => { native('h'); sendAct({ type: 'obs_set_transition', name: n }); }); tc.append(c); }); }
+    const dur = w.querySelector('.otd input'); if (!w._drag) { dur.value = obs.transitionMs || 300; w.querySelector('.otd b').textContent = (obs.transitionMs || 300) + ' ms'; }
+    w.querySelector('.otd').style.display = obs.transition && /cut/i.test(obs.transition) ? 'none' : '';
+    // audio mixer
     const mx = w.querySelector('.omx'), names = JSON.stringify(obs.inputs.map(i => i.name));
     if (mx._n !== names) { mx._n = names; mx.innerHTML = ''; obs.inputs.forEach(i => mx.append(mixRow(i))); }
     obs.inputs.forEach(i => { const row = [...mx.children].find(r => r.dataset.i === i.name); if (!row) return; row.classList.toggle('muted', !!i.mute); row.querySelector('.mm').textContent = i.mute ? '🔇' : '🔊'; if (!row._drag) paintMix(row, i.vol); });
   });
 }
-
 // ---- Discord call page ------------------------------------------------------------------------
 function dAvatar(u) {
   if (u.avatar) return `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=128`;
@@ -509,7 +560,7 @@ function refreshSliders() {
 function refreshActive() {
   document.querySelectorAll('.key').forEach(k => {
     const t = k._b && k._b.action && k._b.action.type;
-    k.classList.toggle('act', (t === 'mute_toggle' && status.muted === true) || (t === 'mic_toggle' && status.micMuted === true) || (t === 'discord_mute_toggle' && discord.mute) || (t === 'discord_deafen_toggle' && discord.deaf) || (t === 'obs_stream_toggle' && obs.streaming) || (t === 'obs_record_toggle' && obs.recording) || (t === 'obs_virtualcam_toggle' && obs.vcam) || (t === 'obs_scene' && obs.scene && k._b.action.scene === obs.scene) || (t === 'obs_mute_toggle' && (obs.inputs.find(i => i.name === k._b.action.input) || {}).mute === true));
+    k.classList.toggle('act', (t === 'mute_toggle' && status.muted === true) || (t === 'mic_toggle' && status.micMuted === true) || (t === 'discord_mute_toggle' && discord.mute) || (t === 'discord_deafen_toggle' && discord.deaf) || (t === 'obs_stream_toggle' && obs.streaming) || (t === 'obs_record_toggle' && obs.recording) || (t === 'obs_virtualcam_toggle' && obs.vcam) || (t === 'obs_scene' && obs.scene && k._b.action.scene === obs.scene) || (t === 'obs_studio_toggle' && obs.studio) || (t === 'obs_replay_toggle' && obs.replay) || (t === 'obs_mute_toggle' && (obs.inputs.find(i => i.name === k._b.action.input) || {}).mute === true));
   });
 }
 function markDots() { [...$('dots').children].forEach((d, i) => d.classList.toggle('on', i === curPage)); }

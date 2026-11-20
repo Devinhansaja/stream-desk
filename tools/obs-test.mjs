@@ -1,4 +1,4 @@
-﻿// OBS control test against a FAKE OBS (obs-websocket v5, with password). Host needs an SDH_DATA_DIR with obs-auth.json
+// OBS control test against a FAKE OBS (obs-websocket v5, with password). Host needs an SDH_DATA_DIR with obs-auth.json
 // {"enabled":true,"host":"127.0.0.1","port":47955,"password":"plain:pw123"}.   usage: node obs-test.mjs <pairing-file> <hostPort>
 import { readFileSync } from 'node:fs';
 import { startFakeObs } from './fake-obs.mjs';
@@ -21,6 +21,10 @@ check('scene list (in OBS order) and current scene', JSON.stringify(last.scenes)
 check('mixer lists only audio sources', JSON.stringify(last.inputs.map(i => i.name)) === '["Mic/Aux","Desktop Audio"]', JSON.stringify(last.inputs.map(i => i.name)));
 check('volume fader mapping (1.0 -> 100%, 0.125 -> 50%)', last.inputs[0].vol === 1 && Math.abs(last.inputs[1].vol - 0.5) < 0.01, JSON.stringify(last.inputs.map(i => i.vol)));
 check('nothing live at first', !last.streaming && !last.recording && !last.vcam);
+check('sources of the live scene (top layer first)', JSON.stringify(last.items.map(i => i.name)) === '["Overlay","Webcam","Game Capture"]' && last.itemsScene === 'Gameplay', JSON.stringify(last.items.map(i => i.name)));
+check('locked state is known', last.items[0].locked === true && last.items[1].locked === false);
+check('transitions list and current transition', JSON.stringify(last.transitions) === '["Cut","Fade","Slide"]' && last.transition === 'Fade' && last.transitionMs === 300);
+check('studio mode and replay buffer start off', last.studio === false && last.replay === false);
 
 let r = await act({ type: 'obs_scene', scene: 'Chatting' });
 check('switch scene', r?.ok === true && await until(() => last.scene === 'Chatting'));
@@ -43,6 +47,38 @@ r = await act({ type: 'obs_mute_toggle', input: 'Logo' });
 check('muting a non-audio source reports an error', r?.ok === false, r?.error);
 await act({ type: 'obs_stream_toggle' }); await act({ type: 'obs_record_toggle' });
 check('stop stream and recording', await until(() => !last.streaming && !last.recording && last.streamTime === ''));
+
+// ---- full scene control
+check('sources follow the live scene', last.itemsScene === 'Chatting' && JSON.stringify(last.items.map(i => i.name)) === '["Webcam"]', JSON.stringify(last.items.map(i => i.name)));
+r = await act({ type: 'obs_item_enabled', scene: 'Chatting', id: 1, value: false });
+check('hide a source', r?.ok === true && await until(() => last.items[0].enabled === false));
+r = await act({ type: 'obs_item_locked', scene: 'Chatting', id: 1, value: true });
+check('lock a source', r?.ok === true && await until(() => last.items[0].locked === true));
+r = await act({ type: 'obs_source_toggle', source: 'Webcam' });
+check('show/hide a source by name (for keys)', r?.ok === true && await until(() => last.items[0].enabled === true));
+obs.addScene('Be Right Back');
+check('a scene created in OBS appears on the phone automatically', await until(() => last.scenes.includes('Be Right Back')), JSON.stringify(last.scenes));
+r = await act({ type: 'obs_scene', scene: 'Be Right Back' });
+check('the new scene can be switched to; it has no sources yet', r?.ok === true && await until(() => last.scene === 'Be Right Back' && last.items.length === 0 && last.itemsScene === 'Be Right Back'));
+obs.st.items['Be Right Back'].push({ id: 7, name: 'BRB Text', enabled: true, locked: false }); obs.bcast('SceneItemCreated', { sceneName: 'Be Right Back', sceneItemId: 7 });
+check('a source added in OBS shows up in that scene', await until(() => last.items.length === 1 && last.items[0].name === 'BRB Text'));
+r = await act({ type: 'obs_set_transition', name: 'Slide' });
+check('change transition', r?.ok === true && await until(() => last.transition === 'Slide'));
+r = await act({ type: 'obs_transition_duration', ms: 750 });
+check('change transition duration', r?.ok === true && await until(() => last.transitionMs === 750));
+r = await act({ type: 'obs_studio_toggle' });
+check('studio mode on (preview scene known)', r?.ok === true && await until(() => last.studio === true && last.preview === 'Starting Soon'), last.preview);
+check('in studio mode the sources shown are the preview scene\'s', await until(() => last.itemsScene === 'Starting Soon' && last.items.length === 1 && last.items[0].name === 'Banner'));
+r = await act({ type: 'obs_preview_scene', scene: 'Gameplay' });
+check('pick another preview scene', r?.ok === true && await until(() => last.preview === 'Gameplay' && last.items.length === 3));
+r = await act({ type: 'obs_transition' });
+check('transition makes the preview go live', r?.ok === true && await until(() => last.scene === 'Gameplay'));
+r = await act({ type: 'obs_studio_toggle' });
+check('studio mode off: sources follow the live scene again', await until(() => last.studio === false && last.itemsScene === last.scene));
+r = await act({ type: 'obs_replay_toggle' });
+check('replay buffer on', r?.ok === true && await until(() => last.replay === true));
+r = await act({ type: 'obs_replay_save' });
+check('save replay', r?.ok === true && obs.st.replaySaved === 1);
 
 // OBS quits
 obs.close();

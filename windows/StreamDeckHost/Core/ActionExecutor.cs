@@ -42,6 +42,16 @@ public sealed class ActionExecutor
             case "discord_deafen_toggle": await (Discord ?? throw new InvalidOperationException("Discord is not set up")).ToggleDeafenAsync(); break;
             case "discord_join": await (Discord ?? throw new InvalidOperationException("Discord is not set up")).JoinAsync(Str(action, "channel")); break;
             case "obs_scene": await ObsOrThrow.SetSceneAsync(Str(action, "scene")); break;
+            case "obs_source_toggle": await ObsOrThrow.ToggleSourceAsync(Str(action, "scene"), Str(action, "source")); break;
+            case "obs_item_enabled": await ObsOrThrow.SetItemEnabledAsync(Str(action, "scene"), Int(action, "id", -1), Bool(action, "value", true)); break;
+            case "obs_item_locked": await ObsOrThrow.SetItemLockedAsync(Str(action, "scene"), Int(action, "id", -1), Bool(action, "value", true)); break;
+            case "obs_studio_toggle": await ObsOrThrow.StudioToggleAsync(); break;
+            case "obs_preview_scene": await ObsOrThrow.PreviewSceneAsync(Str(action, "scene")); break;
+            case "obs_transition": await ObsOrThrow.TransitionAsync(); break;
+            case "obs_set_transition": await ObsOrThrow.SetTransitionAsync(Str(action, "name")); break;
+            case "obs_transition_duration": await ObsOrThrow.SetTransitionDurationAsync(Int(action, "ms", 300)); break;
+            case "obs_replay_toggle": await ObsOrThrow.ReplayToggleAsync(); break;
+            case "obs_replay_save": await ObsOrThrow.ReplaySaveAsync(); break;
             case "obs_stream_toggle": await ObsOrThrow.ToggleStreamAsync(); break;
             case "obs_record_toggle": await ObsOrThrow.ToggleRecordAsync(); break;
             case "obs_record_pause_toggle": await ObsOrThrow.ToggleRecordPauseAsync(); break;

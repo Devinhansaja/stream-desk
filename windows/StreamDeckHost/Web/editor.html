@@ -170,6 +170,12 @@ const ACTIONS = [
   { type:'obs_virtualcam_toggle', label:'OBS: virtual camera on / off', cat:'OBS', icon:'videocam', params:[] },
   { type:'obs_mute_toggle', label:'OBS: mute / unmute a source', cat:'OBS', icon:'mic_off', params:[{k:'input',l:'Audio source name (e.g. Mic/Aux)',kind:'text'}] },
   { type:'obs_volume', label:'OBS: set a source volume', cat:'OBS', icon:'tune', params:[{k:'input',l:'Audio source name',kind:'text'},{k:'value',l:'Volume %',kind:'number',def:80}] },
+
+  { type:'obs_source_toggle', label:'OBS: show / hide a source', cat:'OBS', icon:'visibility', params:[{k:'scene',l:'Scene (blank = the scene on screen)',kind:'text'},{k:'source',l:'Source name',kind:'text'}] },
+  { type:'obs_studio_toggle', label:'OBS: studio mode on / off', cat:'OBS', icon:'view_agenda', params:[] },
+  { type:'obs_transition', label:'OBS: run the transition (studio mode)', cat:'OBS', icon:'swap_horiz', params:[] },
+  { type:'obs_replay_toggle', label:'OBS: replay buffer on / off', cat:'OBS', icon:'replay', params:[] },
+  { type:'obs_replay_save', label:'OBS: save replay', cat:'OBS', icon:'save', params:[] },
   { type:'none', label:'Do nothing (display only)', cat:'Flow', icon:'block', params:[] },
   { type:'folder', label:'Folder (a group of keys)', cat:'Flow', icon:'folder', params:[{k:'pageId',l:'Opens this folder page',kind:'page'}] },
   { type:'back', label:'Back (close folder)', cat:'Flow', icon:'arrow_back', params:[] },

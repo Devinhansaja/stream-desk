@@ -1,4 +1,4 @@
-﻿// A tiny fake OBS Studio: speaks obs-websocket v5 (JSON over WebSocket, with the password challenge) so tests need no real OBS.
+// A tiny fake OBS Studio: speaks obs-websocket v5 (JSON over WebSocket, with the password challenge) so tests need no real OBS.
 import http from 'node:http';
 import crypto from 'node:crypto';
 
@@ -6,6 +6,12 @@ export function startFakeObs(port, password) {
   const st = {
     scene: 'Gameplay', scenes: ['Starting Soon', 'Gameplay', 'Chatting'], streaming: false, recording: false, paused: false, vcam: false,
     inputs: { 'Mic/Aux': { mute: false, mul: 1 }, 'Desktop Audio': { mute: false, mul: 0.125 }, 'Logo': null },
+    items: {   // stored bottom -> top, like OBS
+      'Starting Soon': [{ id: 1, name: 'Banner', enabled: true, locked: false }],
+      'Gameplay': [{ id: 1, name: 'Game Capture', enabled: true, locked: false }, { id: 2, name: 'Webcam', enabled: true, locked: false }, { id: 3, name: 'Overlay', enabled: true, locked: true }],
+      'Chatting': [{ id: 1, name: 'Webcam', enabled: true, locked: false }],
+    },
+    studio: false, preview: 'Starting Soon', transitions: ['Cut', 'Fade', 'Slide'], transition: 'Fade', transitionMs: 300, replay: false, replaySaved: 0,
     received: [], clients: new Set(), identified: 0, badLogins: 0,
   };
   const salt = 'saltySALT123', challenge = 'challengeXYZ789';
@@ -61,8 +67,26 @@ export function startFakeObs(port, password) {
       case 'GetInputVolume': return st.inputs[a.inputName] ? res(s, d, { inputVolumeMul: st.inputs[a.inputName].mul, inputVolumeDb: 0 }) : res(s, d, undefined, false, 604, 'Not an audio source');
       case 'ToggleInputMute': { const i = st.inputs[a.inputName]; if (!i) return res(s, d, undefined, false, 600, 'No such input'); i.mute = !i.mute; res(s, d, { inputMuted: i.mute }); return bcast('InputMuteStateChanged', { inputName: a.inputName, inputMuted: i.mute }); }
       case 'SetInputVolume': { const i = st.inputs[a.inputName]; if (!i) return res(s, d, undefined, false, 600, 'No such input'); i.mul = a.inputVolumeMul; res(s, d, {}); return bcast('InputVolumeChanged', { inputName: a.inputName, inputVolumeMul: i.mul, inputVolumeDb: 0 }); }
+      case 'GetSceneItemList': return st.items[a.sceneName] ? res(s, d, { sceneItems: st.items[a.sceneName].map((i, n) => ({ sceneItemId: i.id, sourceName: i.name, sceneItemEnabled: i.enabled, sceneItemLocked: i.locked, sceneItemIndex: n, isGroup: false, sourceType: 'OBS_SOURCE_TYPE_INPUT', inputKind: 'x' })) }) : res(s, d, undefined, false, 600, 'No such scene');
+      case 'GetSceneItemId': { const i = (st.items[a.sceneName] || []).find(x => x.name === a.sourceName); return i ? res(s, d, { sceneItemId: i.id }) : res(s, d, undefined, false, 600, 'No such source in scene'); }
+      case 'GetSceneItemEnabled': { const i = (st.items[a.sceneName] || []).find(x => x.id === a.sceneItemId); return i ? res(s, d, { sceneItemEnabled: i.enabled }) : res(s, d, undefined, false, 600, 'No such item'); }
+      case 'SetSceneItemEnabled': { const i = (st.items[a.sceneName] || []).find(x => x.id === a.sceneItemId); if (!i) return res(s, d, undefined, false, 600, 'No such item'); i.enabled = a.sceneItemEnabled; res(s, d, {}); return bcast('SceneItemEnableStateChanged', { sceneName: a.sceneName, sceneItemId: i.id, sceneItemEnabled: i.enabled }); }
+      case 'SetSceneItemLocked': { const i = (st.items[a.sceneName] || []).find(x => x.id === a.sceneItemId); if (!i) return res(s, d, undefined, false, 600, 'No such item'); i.locked = a.sceneItemLocked; res(s, d, {}); return bcast('SceneItemLockStateChanged', { sceneName: a.sceneName, sceneItemId: i.id, sceneItemLocked: i.locked }); }
+      case 'GetStudioModeEnabled': return res(s, d, { studioModeEnabled: st.studio });
+      case 'SetStudioModeEnabled': st.studio = a.studioModeEnabled; res(s, d, {}); return bcast('StudioModeStateChanged', { studioModeEnabled: st.studio });
+      case 'GetCurrentPreviewScene': return st.studio ? res(s, d, { currentPreviewSceneName: st.preview }) : res(s, d, undefined, false, 506, 'Studio mode not active');
+      case 'SetCurrentPreviewScene': st.preview = a.sceneName; res(s, d, {}); return bcast('CurrentPreviewSceneChanged', { sceneName: st.preview });
+      case 'TriggerStudioModeTransition': { const old = st.scene; st.scene = st.preview; st.preview = old; res(s, d, {}); bcast('CurrentProgramSceneChanged', { sceneName: st.scene }); return bcast('CurrentPreviewSceneChanged', { sceneName: st.preview }); }
+      case 'GetSceneTransitionList': return res(s, d, { currentSceneTransitionName: st.transition, transitions: st.transitions.map(n => ({ transitionName: n })) });
+      case 'GetCurrentSceneTransition': return res(s, d, { transitionName: st.transition, transitionDuration: st.transitionMs });
+      case 'SetCurrentSceneTransition': st.transition = a.transitionName; res(s, d, {}); return bcast('CurrentSceneTransitionChanged', { transitionName: st.transition });
+      case 'SetCurrentSceneTransitionDuration': st.transitionMs = a.transitionDuration; res(s, d, {}); return bcast('CurrentSceneTransitionDurationChanged', { transitionDuration: st.transitionMs });
+      case 'GetReplayBufferStatus': return res(s, d, { outputActive: st.replay });
+      case 'ToggleReplayBuffer': st.replay = !st.replay; res(s, d, { outputActive: st.replay }); return bcast('ReplayBufferStateChanged', { outputActive: st.replay, outputState: st.replay ? 'OBS_WEBSOCKET_OUTPUT_STARTED' : 'OBS_WEBSOCKET_OUTPUT_STOPPED' });
+      case 'SaveReplayBuffer': st.replaySaved++; return res(s, d, {});
       default: return res(s, d, {});
     }
   }
-  return new Promise(r => server.listen(port, '127.0.0.1', () => r({ st, bcast, close: () => { st.clients.forEach(c => c.destroy()); server.close(); } })));
+  const addScene = name => { st.scenes.push(name); st.items[name] = []; bcast('SceneListChanged', {}); };
+  return new Promise(r => server.listen(port, '127.0.0.1', () => r({ st, bcast, addScene, close: () => { st.clients.forEach(c => c.destroy()); server.close(); } })));
 }

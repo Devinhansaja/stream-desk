@@ -55,6 +55,7 @@ public sealed class ObsAuth
 }
 
 public sealed class ObsInput { public string Name = ""; public bool Mute; public double Vol; }
+public sealed class ObsItem { public int Id; public string Name = ""; public bool Enabled, Locked, Group; public string Kind = ""; }
 
 /// <summary>
 /// OBS Studio remote control through obs-websocket v5 (built into OBS 28+): scenes, stream/record/virtual camera
@@ -70,6 +71,8 @@ public sealed class ObsRpc : IDisposable
     readonly SemaphoreSlim writeLock = new(1, 1);
     readonly List<string> scenes = new();
     readonly List<ObsInput> inputs = new();
+    readonly List<ObsItem> items = new();
+    readonly List<string> transitions = new();
 
     ClientWebSocket? ws;
     bool restart;
@@ -82,6 +85,12 @@ public sealed class ObsRpc : IDisposable
     public bool Recording { get; private set; }
     public bool RecPaused { get; private set; }
     public bool VirtualCam { get; private set; }
+    public bool Studio { get; private set; }
+    public string Preview { get; private set; } = "";
+    public string Transition { get; private set; } = "";
+    public int TransitionMs { get; private set; }
+    public bool Replay { get; private set; }
+    public string ItemsScene { get; private set; } = "";
     public string StreamTime { get; private set; } = "";
     public string RecTime { get; private set; } = "";
 
@@ -97,8 +106,12 @@ public sealed class ObsRpc : IDisposable
         {
             var sc = new JsonArray(); foreach (var s in scenes) sc.Add(s);
             var inp = new JsonArray(); foreach (var i in inputs) inp.Add(new JsonObject { ["name"] = i.Name, ["mute"] = i.Mute, ["vol"] = Math.Round(i.Vol, 3) });
+            var tr = new JsonArray(); foreach (var t in transitions) tr.Add(t);
+            var it = new JsonArray(); foreach (var i in items) it.Add(new JsonObject { ["id"] = i.Id, ["name"] = i.Name, ["enabled"] = i.Enabled, ["locked"] = i.Locked, ["group"] = i.Group, ["kind"] = i.Kind });
             return new JsonObject
             {
+                ["studio"] = Studio, ["preview"] = Preview, ["transitions"] = tr, ["transition"] = Transition, ["transitionMs"] = TransitionMs,
+                ["replay"] = Replay, ["itemsScene"] = ItemsScene, ["items"] = it,
                 ["t"] = "obs", ["rpc"] = Phase, ["status"] = StatusText, ["scene"] = Scene, ["scenes"] = sc,
                 ["streaming"] = Streaming, ["recording"] = Recording, ["paused"] = RecPaused, ["vcam"] = VirtualCam,
                 ["streamTime"] = StreamTime, ["recTime"] = RecTime, ["inputs"] = inp,
@@ -122,7 +135,7 @@ public sealed class ObsRpc : IDisposable
 
     void Clear()
     {
-        lock (gate) { scenes.Clear(); inputs.Clear(); Scene = ""; Streaming = Recording = RecPaused = VirtualCam = false; StreamTime = RecTime = ""; }
+        lock (gate) { scenes.Clear(); inputs.Clear(); items.Clear(); transitions.Clear(); Studio = Replay = false; Preview = Transition = ItemsScene = ""; Scene = ""; Streaming = Recording = RecPaused = VirtualCam = false; StreamTime = RecTime = ""; }
         Changed?.Invoke();
     }
 
@@ -240,6 +253,66 @@ public sealed class ObsRpc : IDisposable
             VirtualCam = vc;
         }
         await RefreshInputs();
+        await RefreshStudio();
+        await RefreshTransitions();
+        try { var rb = await Cmd("GetReplayBufferStatus"); lock (gate) Replay = rb["outputActive"]?.GetValue<bool>() ?? false; } catch { lock (gate) Replay = false; }
+        await RefreshItems();
+    }
+
+    /// <summary>The scene whose sources are shown: the preview scene in Studio Mode, otherwise the live scene.</summary>
+    string ViewScene() { lock (gate) return Studio && Preview.Length > 0 ? Preview : Scene; }
+
+    async Task RefreshStudio()
+    {
+        try
+        {
+            bool on = (await Cmd("GetStudioModeEnabled"))["studioModeEnabled"]?.GetValue<bool>() ?? false;
+            string prev = "";
+            if (on) { try { prev = (await Cmd("GetCurrentPreviewScene"))["currentPreviewSceneName"]?.GetValue<string>() ?? ""; } catch { } }
+            lock (gate) { Studio = on; Preview = prev; }
+        }
+        catch { lock (gate) { Studio = false; Preview = ""; } }
+        Changed?.Invoke();
+    }
+
+    async Task RefreshTransitions()
+    {
+        try
+        {
+            var r = await Cmd("GetSceneTransitionList");
+            int ms = 0;
+            try { ms = (await Cmd("GetCurrentSceneTransition"))["transitionDuration"]?.GetValue<int>() ?? 0; } catch { }
+            lock (gate)
+            {
+                transitions.Clear();
+                if (r["transitions"] is JsonArray arr) foreach (var t in arr) if (t?["transitionName"]?.GetValue<string>() is { } n) transitions.Add(n);
+                Transition = r["currentSceneTransitionName"]?.GetValue<string>() ?? ""; TransitionMs = ms;
+            }
+        }
+        catch { }
+        Changed?.Invoke();
+    }
+
+    async Task RefreshItems()
+    {
+        var scene = ViewScene();
+        if (scene.Length == 0) { lock (gate) { items.Clear(); ItemsScene = ""; } Changed?.Invoke(); return; }
+        var found = new List<ObsItem>();
+        try
+        {
+            var r = await Cmd("GetSceneItemList", new JsonObject { ["sceneName"] = scene });
+            if (r["sceneItems"] is JsonArray arr)
+                foreach (var i in arr.Reverse())   // OBS lists bottom-up; show the top layer first
+                    found.Add(new ObsItem
+                    {
+                        Id = i?["sceneItemId"]?.GetValue<int>() ?? 0, Name = i?["sourceName"]?.GetValue<string>() ?? "?",
+                        Enabled = i?["sceneItemEnabled"]?.GetValue<bool>() ?? true, Locked = i?["sceneItemLocked"]?.GetValue<bool>() ?? false,
+                        Group = i?["isGroup"]?.GetValue<bool>() ?? false, Kind = i?["inputKind"]?.GetValue<string>() ?? i?["sourceType"]?.GetValue<string>() ?? "",
+                    });
+        }
+        catch { }
+        lock (gate) { items.Clear(); items.AddRange(found); ItemsScene = scene; }
+        Changed?.Invoke();
     }
 
     static string Trim(string? tc) => string.IsNullOrEmpty(tc) ? "" : (tc.Contains('.') ? tc[..tc.IndexOf('.')] : tc);
@@ -286,7 +359,28 @@ public sealed class ObsRpc : IDisposable
     {
         switch (ev)
         {
-            case "CurrentProgramSceneChanged": lock (gate) Scene = d?["sceneName"]?.GetValue<string>() ?? Scene; Changed?.Invoke(); break;
+            case "CurrentProgramSceneChanged":
+                lock (gate) Scene = d?["sceneName"]?.GetValue<string>() ?? Scene;
+                Changed?.Invoke();
+                if (!Studio) await RefreshItems();
+                break;
+            case "StudioModeStateChanged": await RefreshStudio(); await RefreshItems(); break;
+            case "CurrentPreviewSceneChanged": lock (gate) Preview = d?["sceneName"]?.GetValue<string>() ?? Preview; Changed?.Invoke(); await RefreshItems(); break;
+            case "CurrentSceneTransitionChanged": case "CurrentSceneTransitionDurationChanged": case "SceneTransitionListChanged": await RefreshTransitions(); break;
+            case "SceneItemEnableStateChanged":
+            case "SceneItemLockStateChanged":
+                {
+                    var sn = d?["sceneName"]?.GetValue<string>(); var iid = d?["sceneItemId"]?.GetValue<int>() ?? -1;
+                    lock (gate)
+                    {
+                        if (sn == ItemsScene) { var it = items.FirstOrDefault(x => x.Id == iid); if (it != null) { if (ev == "SceneItemEnableStateChanged") it.Enabled = d?["sceneItemEnabled"]?.GetValue<bool>() ?? it.Enabled; else it.Locked = d?["sceneItemLocked"]?.GetValue<bool>() ?? it.Locked; } }
+                    }
+                    Changed?.Invoke(); break;
+                }
+            case "SceneItemCreated": case "SceneItemRemoved": case "SceneItemListReindexed":
+                if (d?["sceneName"]?.GetValue<string>() == ItemsScene) await RefreshItems();
+                break;
+            case "ReplayBufferStateChanged": lock (gate) Replay = d?["outputActive"]?.GetValue<bool>() ?? false; Changed?.Invoke(); break;
             case "SceneListChanged": case "SceneCreated": case "SceneRemoved": case "SceneNameChanged": await RefreshScenes(); break;
             case "StreamStateChanged":
                 lock (gate) { Streaming = d?["outputActive"]?.GetValue<bool>() ?? false; if (!Streaming) StreamTime = ""; }
@@ -331,6 +425,27 @@ public sealed class ObsRpc : IDisposable
     public Task ToggleRecordAsync() => Cmd("ToggleRecord");
     public Task ToggleRecordPauseAsync() => Cmd("ToggleRecordPause");
     public Task ToggleVirtualCamAsync() => Cmd("ToggleVirtualCam");
+    public Task SetItemEnabledAsync(string scene, int id, bool on) => Cmd("SetSceneItemEnabled", new JsonObject { ["sceneName"] = scene, ["sceneItemId"] = id, ["sceneItemEnabled"] = on });
+    public Task SetItemLockedAsync(string scene, int id, bool on) => Cmd("SetSceneItemLocked", new JsonObject { ["sceneName"] = scene, ["sceneItemId"] = id, ["sceneItemLocked"] = on });
+
+    /// <summary>Show/hide a source by name (for keys). Scene defaults to the one on screen.</summary>
+    public async Task ToggleSourceAsync(string? scene, string source)
+    {
+        if (string.IsNullOrWhiteSpace(source)) throw new ArgumentException("Missing source name");
+        var sc = string.IsNullOrWhiteSpace(scene) ? ViewScene() : scene;
+        var id = (await Cmd("GetSceneItemId", new JsonObject { ["sceneName"] = sc, ["sourceName"] = source }))["sceneItemId"]!.GetValue<int>();
+        var on = (await Cmd("GetSceneItemEnabled", new JsonObject { ["sceneName"] = sc, ["sceneItemId"] = id }))["sceneItemEnabled"]?.GetValue<bool>() ?? true;
+        await SetItemEnabledAsync(sc, id, !on);
+    }
+
+    public Task StudioToggleAsync() { bool now; lock (gate) now = !Studio; return Cmd("SetStudioModeEnabled", new JsonObject { ["studioModeEnabled"] = now }); }
+    public Task PreviewSceneAsync(string scene) => Cmd("SetCurrentPreviewScene", new JsonObject { ["sceneName"] = scene });
+    public Task TransitionAsync() => Cmd("TriggerStudioModeTransition");
+    public Task SetTransitionAsync(string name) => Cmd("SetCurrentSceneTransition", new JsonObject { ["transitionName"] = name });
+    public Task SetTransitionDurationAsync(int ms) => Cmd("SetCurrentSceneTransitionDuration", new JsonObject { ["transitionDuration"] = Math.Clamp(ms, 50, 20000) });
+    public Task ReplayToggleAsync() => Cmd("ToggleReplayBuffer");
+    public Task ReplaySaveAsync() => Cmd("SaveReplayBuffer");
+
     public Task ToggleMuteAsync(string input) => string.IsNullOrWhiteSpace(input) ? throw new ArgumentException("Missing audio source name") : Cmd("ToggleInputMute", new JsonObject { ["inputName"] = input });
     public Task SetVolumeAsync(string input, int percent) =>
         Cmd("SetInputVolume", new JsonObject { ["inputName"] = input, ["inputVolumeMul"] = PosToMul(percent / 100.0) });
