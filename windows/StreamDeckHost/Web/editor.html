@@ -163,11 +163,18 @@ const ACTIONS = [
   { type:'discord_mute_toggle', label:'Discord: mute / unmute', cat:'Discord', icon:'mic_off', params:[] },
   { type:'discord_deafen_toggle', label:'Discord: deafen / undeafen', cat:'Discord', icon:'headset_off', params:[] },
   { type:'discord_disconnect', label:'Discord: leave call', cat:'Discord', icon:'call_end', params:[] },
+  { type:'obs_scene', label:'OBS: switch scene', cat:'OBS', icon:'movie', params:[{k:'scene',l:'Scene name (exactly as in OBS)',kind:'text'}] },
+  { type:'obs_stream_toggle', label:'OBS: start / stop streaming', cat:'OBS', icon:'cell_tower', params:[] },
+  { type:'obs_record_toggle', label:'OBS: start / stop recording', cat:'OBS', icon:'fiber_manual_record', params:[] },
+  { type:'obs_record_pause_toggle', label:'OBS: pause / resume recording', cat:'OBS', icon:'pause_circle', params:[] },
+  { type:'obs_virtualcam_toggle', label:'OBS: virtual camera on / off', cat:'OBS', icon:'videocam', params:[] },
+  { type:'obs_mute_toggle', label:'OBS: mute / unmute a source', cat:'OBS', icon:'mic_off', params:[{k:'input',l:'Audio source name (e.g. Mic/Aux)',kind:'text'}] },
+  { type:'obs_volume', label:'OBS: set a source volume', cat:'OBS', icon:'tune', params:[{k:'input',l:'Audio source name',kind:'text'},{k:'value',l:'Volume %',kind:'number',def:80}] },
   { type:'none', label:'Do nothing (display only)', cat:'Flow', icon:'block', params:[] },
   { type:'folder', label:'Folder (a group of keys)', cat:'Flow', icon:'folder', params:[{k:'pageId',l:'Opens this folder page',kind:'page'}] },
   { type:'back', label:'Back (close folder)', cat:'Flow', icon:'arrow_back', params:[] },
 ];
-const CAT_COLORS = { Discord:['#5865f2','#3b4cc0'], Audio:['#1e90ff','#00e5ff'], Display:['#ffc400','#ff6d00'], Input:['#7c4dff','#d500f9'], Launch:['#00e676','#1b5e20'], Power:['#ff1744','#b71c1c'], Flow:['#b0bec5','#455a64'] };
+const CAT_COLORS = { OBS:['#a78bfa','#6d28d9'], Discord:['#5865f2','#3b4cc0'], Audio:['#1e90ff','#00e5ff'], Display:['#ffc400','#ff6d00'], Input:['#7c4dff','#d500f9'], Launch:['#00e676','#1b5e20'], Power:['#ff1744','#b71c1c'], Flow:['#b0bec5','#455a64'] };
 const WIDGETS = [['cpu','CPU %','memory'],['ram','RAM %','developer_board'],['uptime','PC uptime','schedule'],['clock','Clock','access_time'],['volume','Volume','volume_up'],['brightness','Brightness','brightness_6'],['disk:C','Disk C: free','storage'],['disk:D','Disk D: free','storage'],['disk:E','Disk E: free','storage'],['slider:volume','Volume slider','tune'],['slider:brightness','Brightness slider','brightness_6']];
 const def = t => ACTIONS.find(a => a.type === t) || ACTIONS[0];
 const defaults = t => { const a = { type: t }; def(t).params.forEach(p => { if (p.def !== undefined) a[p.k] = p.def; }); if (t === 'macro') a.steps = []; return a; };
@@ -290,6 +297,7 @@ const WKIND = {
   lyrics:  { icon: '🎵', name: 'Lyrics',           about: 'Shows the song playing on the PC (Spotify, YouTube Music, browser…) with time-synced lyrics from LRCLIB. Needs the phone connected to the PC; the PC needs internet to fetch lyrics.' },
   youtube: { icon: '▶',  name: 'YouTube video',    defaults: { url: '' }, about: 'Plays a YouTube video or playlist on the phone itself (the phone needs internet). Plays only while this page is on screen.' },
   discord: { icon: '🎮', name: 'Discord call', defaults: { autoOpen: true }, about: 'Shows your Discord voice call on the phone: channel, who is in it, who is speaking, plus Mute / Deafen / Leave buttons. Set it up once in StreamDeck Host > Discord (needs a free Discord application). Discord must be running on the PC.' },
+  obs:     { icon: '🎬', name: 'OBS control center', about: 'Scenes, Go live / Record / Virtual camera and the audio mixer for OBS Studio. Turn on OBS WebSocket once (OBS: Tools > WebSocket Server Settings), then enter the password in StreamDeck Host > OBS.' },
   screen:  { icon: '🖥', name: 'PC screen (2nd display)', about: 'Mirrors your PC screen on the phone. Tap = click, long-press = right-click, drag = move/drag. Windows cannot make a phone a true extended monitor without a driver, so this shows the main monitor.' },
 };
 function drawWidgetPage(pg, g, withPanel) {

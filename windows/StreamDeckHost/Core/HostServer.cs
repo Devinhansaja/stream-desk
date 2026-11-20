@@ -35,6 +35,7 @@ public sealed class HostServer : IDisposable
     readonly LayoutStore layout;
     public ActionExecutor Exec => exec;
     public DiscordRpc Discord { get; } = new();
+    public ObsRpc Obs { get; } = new();
     readonly ConcurrentDictionary<Guid, Client> clients = new();
     readonly ConcurrentDictionary<string, (int fails, DateTime until)> failures = new();
     readonly CancellationTokenSource cts = new();
@@ -64,6 +65,8 @@ public sealed class HostServer : IDisposable
         layout.Changed += () => _ = BroadcastLayout();
         exec.Discord = Discord;
         Discord.Changed += () => _ = BroadcastDiscord();
+        exec.Obs = Obs;
+        Obs.Changed += () => _ = BroadcastObs();
         Tunnel = new Tunnel(store.Data.Port);
         Tunnel.Changed += () => { WriteDevPairing(); Changed?.Invoke(); };
     }
@@ -183,6 +186,7 @@ public sealed class HostServer : IDisposable
 
         StartDiscovery();
         Discord.Start();
+        Obs.Start();
         if (store.Data.InternetTunnel) Tunnel.Start();
         _ = Task.Run(StatusLoop);
         _ = Task.Run(MediaLoop);
@@ -193,6 +197,8 @@ public sealed class HostServer : IDisposable
     public void Dispose()
     {
         cts.Cancel();
+        Discord.Dispose();
+        Obs.Dispose();
         Tunnel.Dispose();
         try { udp?.Close(); } catch { }
         try { app?.StopAsync(TimeSpan.FromSeconds(1)).Wait(2000); } catch { }
@@ -563,6 +569,7 @@ public sealed class HostServer : IDisposable
         await Send(c, new JsonObject { ["t"] = "paired", ["token"] = token, ["host"] = PcName });
         await Send(c, await BuildStatus(true));
         await Send(c, Discord.Snapshot());
+        await Send(c, Obs.Snapshot());
         Changed?.Invoke();
     }
 
@@ -584,6 +591,7 @@ public sealed class HostServer : IDisposable
         await Send(c, new JsonObject { ["t"] = "auth_ok", ["host"] = PcName, ["hosts"] = hostsArr });
         await Send(c, await BuildStatus(true));
         await Send(c, Discord.Snapshot());
+        await Send(c, Obs.Snapshot());
         Changed?.Invoke();
     }
 
@@ -635,6 +643,14 @@ public sealed class HostServer : IDisposable
             catch (OperationCanceledException) { break; }
             catch { }
         }
+    }
+
+    async Task BroadcastObs()
+    {
+        if (ConnectedCount == 0) return;
+        var snap = Obs.Snapshot();
+        foreach (var c in clients.Values.Where(x => x.Device != null))
+            await Send(c, JsonNode.Parse(snap.ToJsonString())!.AsObject());
     }
 
     async Task BroadcastDiscord()

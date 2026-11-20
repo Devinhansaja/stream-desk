@@ -14,6 +14,8 @@ public sealed class ActionExecutor
     readonly SettingsStore store;
     public ActionExecutor(SettingsStore store) => this.store = store;
     public DiscordRpc? Discord { get; set; }
+    public ObsRpc? Obs { get; set; }
+    ObsRpc ObsOrThrow => Obs ?? throw new InvalidOperationException("OBS is not set up");
 
     static string Str(JsonNode n, string key, string def = "") =>
         n[key] is JsonValue v && v.TryGetValue<string>(out var s) ? s : def;
@@ -39,6 +41,13 @@ public sealed class ActionExecutor
             case "discord_mute_toggle": await (Discord ?? throw new InvalidOperationException("Discord is not set up")).ToggleMuteAsync(); break;
             case "discord_deafen_toggle": await (Discord ?? throw new InvalidOperationException("Discord is not set up")).ToggleDeafenAsync(); break;
             case "discord_join": await (Discord ?? throw new InvalidOperationException("Discord is not set up")).JoinAsync(Str(action, "channel")); break;
+            case "obs_scene": await ObsOrThrow.SetSceneAsync(Str(action, "scene")); break;
+            case "obs_stream_toggle": await ObsOrThrow.ToggleStreamAsync(); break;
+            case "obs_record_toggle": await ObsOrThrow.ToggleRecordAsync(); break;
+            case "obs_record_pause_toggle": await ObsOrThrow.ToggleRecordPauseAsync(); break;
+            case "obs_virtualcam_toggle": await ObsOrThrow.ToggleVirtualCamAsync(); break;
+            case "obs_mute_toggle": await ObsOrThrow.ToggleMuteAsync(Str(action, "input")); break;
+            case "obs_volume": await ObsOrThrow.SetVolumeAsync(Str(action, "input"), Int(action, "value", 50)); break;
             case "discord_disconnect": await (Discord ?? throw new InvalidOperationException("Discord is not set up")).DisconnectAsync(); break;
             case "none": case "folder": case "back": break; // live tiles / client-side navigation
 

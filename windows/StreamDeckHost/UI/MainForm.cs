@@ -92,7 +92,7 @@ public sealed class MainForm : Form
         };
 
         var nav = new Panel { Dock = DockStyle.Left, Width = 200, BackColor = Panel, Padding = new Padding(12, 16, 12, 12) };
-        string[] names = { "Editor", "Pairing", "Discord", "Internet", "Devices", "Activity", "Settings" };
+        string[] names = { "Editor", "Pairing", "Discord", "OBS", "Internet", "Devices", "Activity", "Settings" };
         for (int i = names.Length - 1; i >= 0; i--)
         {
             var name = names[i];
@@ -111,6 +111,7 @@ public sealed class MainForm : Form
         pages["Editor"] = BuildEditorPage();
         pages["Pairing"] = BuildPairingPage();
         pages["Discord"] = BuildDiscordPage();
+        pages["OBS"] = BuildObsPage();
         pages["Internet"] = BuildInternetPage();
         pages["Devices"] = BuildDevicesPage();
         pages["Activity"] = BuildActivityPage();
@@ -159,6 +160,7 @@ public sealed class MainForm : Form
 
     readonly Label tunnelLabel = new();
     readonly Label discordLabel = new();
+    readonly Label obsLabel = new();
 
     Control BuildDiscordPage()
     {
@@ -200,6 +202,40 @@ public sealed class MainForm : Form
         p.Controls.Add(H("Your login is stored encrypted for your Windows account. The phone page is in the default layout (+ Widget page > Discord call).", 0, 440, 9.5f, Muted));
         return p;
     }
+    Control BuildObsPage()
+    {
+        var p = new Panel();
+        p.Controls.Add(H("OBS control center", 0, 0));
+        p.Controls.Add(H("Control OBS Studio from the phone: switch scenes, go live, record, virtual camera and the audio mixer.\nOBS has this built in. Turn it on once:", 0, 36, 10f, Muted));
+        p.Controls.Add(H("1.  In OBS:  Tools  >  WebSocket Server Settings  >  tick  Enable WebSocket server  (port 4455 is the default).\n2.  Tick  Enable Authentication  and press  Show Connect Info  to see the password  (or leave authentication off).\n3.  Enter the password here and press Connect.   OBS must be running (version 28 or newer).", 0, 92, 10f));
+        var auth = ObsAuth.Load();
+        p.Controls.Add(H("Host", 0, 176, 10f, Muted));
+        var host = new TextBox { Location = new Point(0, 198), Width = 200, Text = auth.Host, BackColor = Panel, ForeColor = Fg, BorderStyle = BorderStyle.FixedSingle };
+        p.Controls.Add(H("Port", 216, 176, 10f, Muted));
+        var port = new TextBox { Location = new Point(216, 198), Width = 90, Text = auth.Port.ToString(), BackColor = Panel, ForeColor = Fg, BorderStyle = BorderStyle.FixedSingle };
+        p.Controls.Add(H("Password", 322, 176, 10f, Muted));
+        var pw = new TextBox { Location = new Point(322, 198), Width = 280, UseSystemPasswordChar = true, Text = auth.Password.Length > 0 ? "********" : "", BackColor = Panel, ForeColor = Fg, BorderStyle = BorderStyle.FixedSingle };
+        p.Controls.Add(host); p.Controls.Add(port); p.Controls.Add(pw);
+        p.Controls.Add(Btn("Connect", 0, 240, 150, Purple, (_, _) =>
+        {
+            var a = ObsAuth.Load();
+            a.Enabled = true; a.Host = host.Text.Trim().Length > 0 ? host.Text.Trim() : "127.0.0.1";
+            a.Port = int.TryParse(port.Text, out var pn) ? pn : 4455;
+            if (pw.Text != "********") a.Password = pw.Text;
+            a.Save();
+            server.Obs.Reconfigure();
+        }));
+        p.Controls.Add(Btn("Disconnect", 166, 240, 150, Panel2, (_, _) =>
+        {
+            var a = ObsAuth.Load(); a.Enabled = false; a.Save();
+            server.Obs.Reconfigure();
+        }));
+        obsLabel.Location = new Point(0, 296); obsLabel.AutoSize = true; obsLabel.ForeColor = Fg;
+        p.Controls.Add(obsLabel);
+        p.Controls.Add(H("The password is stored encrypted for your Windows account. The phone page is in the default layout (+ Widget page > OBS control center).", 0, 360, 9.5f, Muted));
+        return p;
+    }
+
     Control BuildInternetPage()
     {
         var p = new Panel();
@@ -344,6 +380,7 @@ public sealed class MainForm : Form
         int n = server.ConnectedCount;
         statusLabel.Text = "● Running on port " + server.Port;
         statusLabel.ForeColor = Green;
+        obsLabel.Text = "Status: " + server.Obs.StatusText + (server.Obs.Phase == "ok" ? $"\nScene: {server.Obs.Scene}   Streaming: {server.Obs.Streaming}   Recording: {server.Obs.Recording}" : "");
         discordLabel.Text = "Status: " + server.Discord.StatusText + (server.Discord.InCall ? $"\nIn call: {server.Discord.Channel}  (mic muted: {server.Discord.SelfMute}, deafened: {server.Discord.SelfDeaf})" : "");
         tunnelLabel.Text = "Status: " + server.Tunnel.Status + (server.Tunnel.Url != null ? "\nAddress: " + server.Tunnel.Url : "");
         connectedLabel.Text = n == 0 ? "No phone connected" : $"{n} phone{(n == 1 ? "" : "s")} connected";

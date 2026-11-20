@@ -103,16 +103,32 @@ public sealed class LayoutStore
         return new JsonObject { ["id"] = Guid.NewGuid().ToString("N")[..12], ["name"] = "Discord call", ["cols"] = 1, ["rows"] = 1, ["slots"] = slots, ["kind"] = "discord", ["autoOpen"] = true };
     }
 
+    /// <summary>Full-page "OBS control center" widget (scenes, stream / record, audio mixer).</summary>
+    public static JsonObject ObsPage()
+    {
+        var slots = new JsonArray(); slots.Add(null);
+        return new JsonObject { ["id"] = Guid.NewGuid().ToString("N")[..12], ["name"] = "OBS", ["cols"] = 1, ["rows"] = 1, ["slots"] = slots, ["kind"] = "obs" };
+    }
+
     /// <summary>Existing layouts get the Discord page once (deleting it afterwards sticks).</summary>
     void EnsureDiscordPage()
     {
         lock (gate)
         {
-            if (layout["discordAdded"]?.GetValue<bool>() == true) return;
+            if (layout["discordAdded"]?.GetValue<bool>() == true && layout["obsAdded"]?.GetValue<bool>() == true) return;
+            if (layout["discordAdded"]?.GetValue<bool>() != true)
+            {
             layout["discordAdded"] = true;
             if (layout["profiles"] is JsonArray ps && ps.Count > 0 && ps[0]?["pages"] is JsonArray pages
                 && !pages.Any(p => p?["kind"]?.GetValue<string>() == "discord"))
                 pages.Add(DiscordPage());
+            }
+            if (layout["obsAdded"]?.GetValue<bool>() != true)
+            {
+                layout["obsAdded"] = true;
+                if (layout["profiles"] is JsonArray ps2 && ps2.Count > 0 && ps2[0]?["pages"] is JsonArray pages2 && !pages2.Any(p => p?["kind"]?.GetValue<string>() == "obs"))
+                    pages2.Add(ObsPage());
+            }
             try { File.WriteAllText(FilePath, layout.ToJsonString()); } catch { }
         }
     }
@@ -164,8 +180,8 @@ public sealed class LayoutStore
         var prof = new JsonObject
         {
             ["id"] = "default", ["name"] = "Default",
-            ["pages"] = new JsonArray(home, stats, Page("Apps", 6, 4), Page("Games", 6, 4), Page("Streaming", 6, 4), Page("Page 6", 6, 4), DiscordPage()),
+            ["pages"] = new JsonArray(home, stats, Page("Apps", 6, 4), Page("Games", 6, 4), Page("Streaming", 6, 4), Page("Page 6", 6, 4), DiscordPage(), ObsPage()),
         };
-        return new JsonObject { ["version"] = 1, ["discordAdded"] = true, ["style"] = "flat", ["background"] = null, ["keyAlpha"] = 0.55, ["keyBlur"] = 0, ["activeProfile"] = "default", ["profiles"] = new JsonArray(prof) };
+        return new JsonObject { ["version"] = 1, ["discordAdded"] = true, ["obsAdded"] = true, ["style"] = "flat", ["background"] = null, ["keyAlpha"] = 0.55, ["keyBlur"] = 0, ["activeProfile"] = "default", ["profiles"] = new JsonArray(prof) };
     }
 }
