@@ -101,7 +101,7 @@ public sealed class MainForm : Form
         var nav = new Panel { Dock = DockStyle.Left, Width = 196, BackColor = Panel, Padding = new Padding(10, 14, 10, 10) };
         var ver = new Label { Text = "v" + Updater.Current.ToString(3), Dock = DockStyle.Bottom, Height = 30, ForeColor = Muted, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(14, 0, 0, 0), Font = new Font("Segoe UI", 9f) };
         nav.Controls.Add(ver);
-        (string name, string glyph)[] items = { ("Editor", "\uE70F"), ("Pairing", "\uE8EA"), ("Discord", "\uE8F2"), ("OBS", "\uE714"), ("Game", "\uE7FC"), ("Internet", "\uE774"), ("Devices", "\uE772"), ("Activity", "\uE81C"), ("Settings", "\uE713") };
+        (string name, string glyph)[] items = { ("Editor", "\uE70F"), ("Pairing", "\uE8EA"), ("Discord", "\uE8F2"), ("OBS", "\uE714"), ("Game", "\uE7FC"), ("Unlock", "\uE785"), ("Internet", "\uE774"), ("Devices", "\uE772"), ("Activity", "\uE81C"), ("Settings", "\uE713") };
         for (int i = items.Length - 1; i >= 0; i--)
         {
             var name = items[i].name;
@@ -116,6 +116,7 @@ public sealed class MainForm : Form
         pages["Discord"] = BuildDiscordPage();
         pages["OBS"] = BuildObsPage();
         pages["Game"] = BuildGamePage();
+        pages["Unlock"] = BuildUnlockPage();
         server.Game.Fps.Changed += () => { try { BeginInvoke(new Action(RefreshAll)); } catch { } };
         pages["Internet"] = BuildInternetPage();
         pages["Devices"] = BuildDevicesPage();
@@ -131,6 +132,7 @@ public sealed class MainForm : Form
     void ShowPage(string name)
     {
         if (name == "Editor") _ = EnsureEditorAsync();
+        if (name == "Unlock") RefreshUnlock();
         foreach (var (k, p) in pages) p.Visible = k == name;
         foreach (var (k, b) in navButtons) b.Active = k == name;
     }
@@ -238,6 +240,42 @@ public sealed class MainForm : Form
         obsLabel.Location = new Point(0, 296); obsLabel.AutoSize = true; obsLabel.ForeColor = Fg;
         p.Controls.Add(obsLabel);
         p.Controls.Add(H("The password is stored encrypted for your Windows account. The phone page is in the default layout (+ Widget page > OBS control center).", 0, 360, 9.5f, Muted));
+        return p;
+    }
+
+    readonly Label unlockLabel = new();
+    void RefreshUnlock() => _ = Task.Run(() =>
+    {
+        var s = UnlockClient.Status();
+        var ok = s["ok"]?.GetValue<bool>() == true;
+        var text = !ok ? "Helper: not installed (press \"Install helper\").\nThe deck key \"Unlock PC\" needs the helper and a saved PIN."
+            : $"Helper: running   |   PIN saved: {(s["hasPin"]?.GetValue<bool>() == true ? "yes" : "no")}   |   PC locked right now: {(s["locked"]?.GetValue<bool>() == true ? "yes" : "no")}";
+        try { BeginInvoke(new Action(() => unlockLabel.Text = text)); } catch { }
+    });
+
+    Control BuildUnlockPage()
+    {
+        var p = new Panel();
+        p.Controls.Add(H("Unlock PC from the deck", 0, 0));
+        p.Controls.Add(H("Adds an \"Unlock PC\" key (Editor > toolbox > Power). When the PC is locked and you tap it, the PC types your Windows PIN on the lock screen.\nIt only types when the PC is really locked, and works only after you lock it (not at startup or after a restart).", 0, 36, 10f, Muted));
+        p.Controls.Add(H("1.  Install the helper once  (Windows will ask for administrator permission).", 0, 100, 10f));
+        p.Controls.Add(Btn("Install helper (admin)", 0, 126, 200, Purple, (_, _) => { var r = Task.Run(UnlockClient.InstallElevated).ContinueWith(t => BeginInvoke(new Action(() => { if (t.Result != null) MessageBox.Show(t.Result, "StreamDeck Host"); RefreshUnlock(); }))); }));
+        p.Controls.Add(Btn("Remove helper", 216, 126, 150, Panel2, (_, _) => { Task.Run(UnlockClient.UninstallElevated).ContinueWith(t => BeginInvoke(new Action(() => { if (t.Result != null) MessageBox.Show(t.Result, "StreamDeck Host"); RefreshUnlock(); }))); }));
+        p.Controls.Add(H("2.  Enter your Windows PIN (stored encrypted, only the helper can read it).", 0, 186, 10f));
+        var pin = new TextBox { Location = new Point(0, 212), Width = 200, UseSystemPasswordChar = true, BackColor = Panel, ForeColor = Fg, BorderStyle = BorderStyle.FixedSingle, MaxLength = 64 };
+        var enter = new CheckBox { Text = "Press Enter after the PIN", Location = new Point(216, 214), AutoSize = true, ForeColor = Fg, Checked = true };
+        p.Controls.Add(pin); p.Controls.Add(enter);
+        p.Controls.Add(Btn("Save PIN", 0, 248, 120, Purple, (_, _) =>
+        {
+            var v = pin.Text; if (v.Length == 0) { MessageBox.Show("Type your PIN first.", "StreamDeck Host"); return; }
+            Task.Run(() => UnlockClient.SetPin(v, enter.Checked)).ContinueWith(t => BeginInvoke(new Action(() => { pin.Text = ""; MessageBox.Show(t.Result ?? "PIN saved.", "StreamDeck Host"); RefreshUnlock(); })));
+        }));
+        p.Controls.Add(Btn("Remove PIN", 136, 248, 120, Panel2, (_, _) => Task.Run(() => UnlockClient.ClearPin()).ContinueWith(_ => RefreshUnlock())));
+        p.Controls.Add(H("3.  Test:  press the button, then lock the PC (Win+L) within 15 seconds and wait. It should unlock itself.", 0, 308, 10f));
+        p.Controls.Add(Btn("Test unlock in 15 seconds", 0, 334, 240, Panel2, (_, _) => Task.Run(async () => { await Task.Delay(15000); try { UnlockClient.Unlock(); } catch (Exception e) { try { BeginInvoke(new Action(() => MessageBox.Show(e.Message, "Unlock test"))); } catch { } } })));
+        unlockLabel.Location = new Point(0, 392); unlockLabel.AutoSize = true; unlockLabel.ForeColor = Fg; unlockLabel.Text = "Checking…";
+        p.Controls.Add(unlockLabel);
+        p.Controls.Add(H("Anyone who can use your deck while the PC is locked can press the key. Turn on \"Ask to confirm\" for the key in the editor if you want an extra tap.", 0, 450, 9.5f, Muted));
         return p;
     }
 

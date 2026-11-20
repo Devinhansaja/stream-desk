@@ -13,6 +13,13 @@ static class Program
         var fi = Array.IndexOf(args, "--fps-helper");
         if (fi >= 0 && fi + 2 < args.Length && int.TryParse(args[fi + 2], out var fpid)) { Environment.ExitCode = FpsHelper.Run(args[fi + 1], fpid); return; }
 
+        // "Unlock PC" helper modes (see UnlockHelper): SYSTEM helper, lock-screen typer, elevated install / remove.
+        if (args.Contains("--unlock-helper")) { Environment.ExitCode = UnlockHelper.RunHelper(); return; }
+        if (args.Contains("--unlock-type")) { Environment.ExitCode = UnlockHelper.RunTyper(); return; }
+        var ii = Array.IndexOf(args, "--install-unlock-helper");
+        if (ii >= 0 && ii + 1 < args.Length) { Environment.ExitCode = UnlockHelper.RunInstall(args[ii + 1]); return; }
+        if (args.Contains("--uninstall-unlock-helper")) { Environment.ExitCode = UnlockHelper.RunUninstall(); return; }
+
         // After a self-update the old process is still shutting down: wait for it, then take the single-instance lock.
         var wi = Array.IndexOf(args, "--wait-pid");
         if (wi >= 0 && wi + 1 < args.Length && int.TryParse(args[wi + 1], out var pid))

@@ -186,6 +186,21 @@ public sealed class LayoutStore
                 if (layout["gameAdded"]?.GetValue<bool>() != true) { layout["gameAdded"] = true; dirty = true; if (!pgs.Any(p => p?["kind"]?.GetValue<string>() == "gamestats")) pgs.Add(GameStatsPage()); }
                 if (layout["adobeAdded"]?.GetValue<bool>() != true) { layout["adobeAdded"] = true; dirty = true; if (!pgs.Any(p => p?["autoApp"] != null)) foreach (var ap in AdobePages()) pgs.Add(ap); }
             }
+            if (layout["unlockAdded"]?.GetValue<bool>() != true)
+            {
+                layout["unlockAdded"] = true; dirty = true;
+                if (layout["profiles"] is JsonArray pfu && pfu.Count > 0 && pfu[0]?["pages"] is JsonArray pgu
+                    && !pgu.Any(p => p?["slots"] is JsonArray sl0 && sl0.OfType<JsonObject>().Any(b => b["action"]?["type"]?.GetValue<string>() == "unlock_pc")))
+                {
+                    // first normal page that still has a free key
+                    foreach (var pg in pgu.OfType<JsonObject>().Where(p => p["kind"] == null && p["slots"] is JsonArray))
+                    {
+                        var sl = (JsonArray)pg["slots"]!; int free = -1;
+                        for (int i = 0; i < sl.Count; i++) if (sl[i] == null) { free = i; break; }
+                        if (free >= 0) { sl[free] = Btn("Unlock PC", "lock_open", "#22e58b", "#00897b", A("unlock_pc")); break; }
+                    }
+                }
+            }
             if (layout["netAdded"]?.GetValue<bool>() != true)
             {
                 layout["netAdded"] = true; dirty = true;
@@ -265,8 +280,7 @@ public sealed class LayoutStore
             Btn("YouTube", "smart_display", "#ff1744", "#b71c1c", A("url", ("url", "https://www.youtube.com"))),
             Btn("Notepad", "edit_note", "#1de9b6", "#00897b", A("launch", ("target", "notepad.exe"))),
             Btn("Calculator", "calculate", "#ff6d00", "#bf360c", A("launch", ("target", "calc.exe"))),
-            Btn("Lock PC", "lock", "#1e90ff", "#0d47a1", A("lock")),
-            Btn("Sleep", "bedtime", "#7c4dff", "#311b92", A("sleep"), true),
+            Btn("Lock PC", "lock", "#1e90ff", "#0d47a1", A("lock")),            Btn("Sleep", "bedtime", "#7c4dff", "#311b92", A("sleep"), true),
             Btn("Restart", "restart_alt", "#00e5ff", "#0277bd", A("restart"), true),
             Btn("Shutdown", "power_settings_new", "#00e676", "#1b5e20", A("shutdown"), true));
 

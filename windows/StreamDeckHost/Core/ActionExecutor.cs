@@ -142,6 +142,7 @@ public sealed class ActionExecutor
 
             // ---------- power ----------
             case "lock": if (!Native.LockWorkStation()) throw new InvalidOperationException("Lock failed"); break;
+            case "unlock_pc": await Task.Run(UnlockClient.Unlock); return "Unlocking…";
             case "sleep": Native.SetSuspendState(false, true, true); break;
             case "shutdown": Shutdown("/s /t 0"); break;
             case "restart": Shutdown("/r /t 0"); break;
