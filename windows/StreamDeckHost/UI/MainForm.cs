@@ -22,7 +22,7 @@ public sealed class MainForm : Form
     readonly HostServer server;
     readonly NotifyIcon tray = new();
     readonly Dictionary<string, Control> pages = new();
-    readonly Dictionary<string, Button> navButtons = new();
+    readonly Dictionary<string, NavButton> navButtons = new();
 
     readonly Label statusLabel = new();
     readonly Label connectedLabel = new();
@@ -79,34 +79,37 @@ public sealed class MainForm : Form
     // ------------------------------------------------------------ layout
     void BuildLayout()
     {
-        var header = new Panel { Dock = DockStyle.Top, Height = 78, BackColor = Panel };
-        var title = new Label { Text = "StreamDeck", Font = new Font("Segoe UI", 20f, FontStyle.Bold), ForeColor = Fg, AutoSize = true, Location = new Point(20, 8) };
-        var sub = new Label { Text = "Host · Windows companion", Font = new Font("Segoe UI", 10.5f), ForeColor = Purple, AutoSize = true, Location = new Point(23, 46) };
-        statusLabel.AutoSize = true; statusLabel.Font = new Font("Segoe UI", 11f, FontStyle.Bold); statusLabel.Location = new Point(360, 16);
-        connectedLabel.AutoSize = true; connectedLabel.ForeColor = Muted; connectedLabel.Location = new Point(360, 44);
-        header.Controls.AddRange(new Control[] { title, sub, statusLabel, connectedLabel });
+        var header = new Panel { Dock = DockStyle.Top, Height = 62, BackColor = Panel };
+        var logo = new PictureBox { Location = new Point(18, 13), Size = new Size(36, 36), SizeMode = PictureBoxSizeMode.Zoom, BackColor = Panel };
+        try { logo.Image = new Icon(Icon!, 48, 48).ToBitmap(); } catch { }
+        var title = new Label { Text = "StreamDeck", Font = new Font("Segoe UI", 15f, FontStyle.Bold), ForeColor = Fg, AutoSize = true, Location = new Point(62, 7), BackColor = Panel };
+        var sub = new Label { Text = "Host  ·  Windows companion", Font = new Font("Segoe UI", 9f), ForeColor = Muted, AutoSize = true, Location = new Point(64, 35), BackColor = Panel };
+        var chips = new FlowLayoutPanel { Dock = DockStyle.Right, AutoSize = true, WrapContents = false, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 15, 16, 0), BackColor = Panel };
+        foreach (var chip in new[] { statusLabel, connectedLabel })
+        {
+            chip.AutoSize = true; chip.Padding = new Padding(10, 5, 10, 5); chip.Margin = new Padding(8, 0, 0, 0);
+            chip.Font = new Font("Segoe UI", 9.5f, FontStyle.Bold); chip.BackColor = Color.FromArgb(30, 30, 64); chips.Controls.Add(chip);
+        }
+        connectedLabel.ForeColor = Muted;
+        header.Controls.Add(chips); header.Controls.AddRange(new Control[] { logo, title, sub });
         header.Paint += (_, e) =>
         {
-            using var pen = new Pen(Purple, 2);
-            e.Graphics.DrawLine(pen, 0, header.Height - 1, header.Width, header.Height - 1);
+            using var br = new LinearGradientBrush(new Rectangle(0, header.Height - 2, Math.Max(2, header.Width), 2), Purple, Blue, 0f);
+            e.Graphics.FillRectangle(br, 0, header.Height - 2, header.Width, 2);
         };
 
-        var nav = new Panel { Dock = DockStyle.Left, Width = 200, BackColor = Panel, Padding = new Padding(12, 16, 12, 12) };
-        string[] names = { "Editor", "Pairing", "Discord", "OBS", "Internet", "Devices", "Activity", "Settings" };
-        for (int i = names.Length - 1; i >= 0; i--)
+        var nav = new Panel { Dock = DockStyle.Left, Width = 196, BackColor = Panel, Padding = new Padding(10, 14, 10, 10) };
+        var ver = new Label { Text = "v" + Updater.Current.ToString(3), Dock = DockStyle.Bottom, Height = 30, ForeColor = Muted, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(14, 0, 0, 0), Font = new Font("Segoe UI", 9f) };
+        nav.Controls.Add(ver);
+        (string name, string glyph)[] items = { ("Editor", "\uE70F"), ("Pairing", "\uE8EA"), ("Discord", "\uE8F2"), ("OBS", "\uE714"), ("Internet", "\uE774"), ("Devices", "\uE772"), ("Activity", "\uE81C"), ("Settings", "\uE713") };
+        for (int i = items.Length - 1; i >= 0; i--)
         {
-            var name = names[i];
-            var b = new Button
-            {
-                Text = "  " + name, Dock = DockStyle.Top, Height = 46, FlatStyle = FlatStyle.Flat, TextAlign = ContentAlignment.MiddleLeft,
-                ForeColor = Fg, BackColor = Panel, Font = new Font("Segoe UI", 11f), Cursor = Cursors.Hand, Margin = new Padding(0, 0, 0, 6),
-            };
-            b.FlatAppearance.BorderSize = 0;
+            var name = items[i].name;
+            var b = new NavButton { Text = name, Glyph = items[i].glyph, Dock = DockStyle.Top, Height = 44 };
             b.Click += (_, _) => ShowPage(name);
             nav.Controls.Add(b);
             navButtons[name] = b;
         }
-
         var content = new Panel { Dock = DockStyle.Fill, BackColor = Bg, Padding = new Padding(12) };
         pages["Editor"] = BuildEditorPage();
         pages["Pairing"] = BuildPairingPage();
@@ -127,7 +130,7 @@ public sealed class MainForm : Form
     {
         if (name == "Editor") _ = EnsureEditorAsync();
         foreach (var (k, p) in pages) p.Visible = k == name;
-        foreach (var (k, b) in navButtons) b.BackColor = k == name ? Purple : Panel;
+        foreach (var (k, b) in navButtons) b.Active = k == name;
     }
 
     Label H(string text, int x, int y, float size = 14f, Color? c = null) =>
@@ -608,3 +611,36 @@ public sealed class MainForm : Form
     }
 }
 
+/// <summary>Sidebar item: rounded highlight, icon glyph and label.</summary>
+sealed class NavButton : Button
+{
+    public string Glyph = "";
+    bool active, hover;
+    public bool Active { get => active; set { active = value; Invalidate(); } }
+    static readonly string IconFont = new System.Drawing.Text.InstalledFontCollection().Families.Any(f => f.Name == "Segoe Fluent Icons") ? "Segoe Fluent Icons" : "Segoe MDL2 Assets";
+
+    public NavButton()
+    {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        FlatStyle = FlatStyle.Flat; FlatAppearance.BorderSize = 0; Cursor = Cursors.Hand; TabStop = false;
+    }
+    protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
+    protected override void OnMouseLeave(EventArgs e) { hover = false; Invalidate(); base.OnMouseLeave(e); }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias; g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+        g.Clear(Parent?.BackColor ?? Color.Black);
+        var r = new Rectangle(3, 3, Width - 6, Height - 6);
+        using var path = new GraphicsPath(); int d = 18;
+        path.AddArc(r.X, r.Y, d, d, 180, 90); path.AddArc(r.Right - d, r.Y, d, d, 270, 90); path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90); path.AddArc(r.X, r.Bottom - d, d, d, 90, 90); path.CloseFigure();
+        if (active) { using var br = new LinearGradientBrush(r, Color.FromArgb(124, 77, 255), Color.FromArgb(76, 52, 200), 0f); g.FillPath(br, path); }
+        else if (hover) { using var br = new SolidBrush(Color.FromArgb(32, 32, 68)); g.FillPath(br, path); }
+        var fg = active ? Color.White : Color.FromArgb(200, 200, 232);
+        using var b2 = new SolidBrush(fg);
+        using var gf = new Font(IconFont, 13f); using var tf = new Font("Segoe UI", 10.5f, active ? FontStyle.Bold : FontStyle.Regular);
+        g.DrawString(Glyph, gf, b2, 16, (Height - 21) / 2f);
+        g.DrawString(Text, tf, b2, 48, (Height - 19) / 2f);
+    }
+}

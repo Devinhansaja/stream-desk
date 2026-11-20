@@ -127,6 +127,7 @@
   .otr { display:flex; flex-direction:column; gap:10px; } .otc { display:flex; flex-wrap:wrap; gap:8px; }
   .tc { background:#26262f; border:2px solid #ffffff22; border-radius:12px; padding:9px 14px; font-weight:600; font-size:14px; } .tc.cur { border-color:#7aa2ff; background:#1d2d57; }
   .otd { display:flex; align-items:center; gap:10px; font-size:13px; } .otd input { flex:1; } .otd b { width:4.5em; text-align:right; font-variant-numeric:tabular-nums; }
+  body.preview #gear, body.preview #dot, body.preview #banner { display:none !important; } body.preview #dots { opacity:1; }
   #empty { margin:auto; text-align:center; color:#aaa; padding:30px; }
 </style>
 </head>
@@ -146,7 +147,8 @@ const DEV = H.get('d') || '', TOK = H.get('t') || '';
 const $ = id => document.getElementById(id);
 const native = m => { try { Native.postMessage(m); } catch (e) {} };
 let folderId = null, lastBg = null, icons = {}, layout = null, ws = null, status = {}, fails = 0, connected = false, nextId = 1, pending = {}, retry = null, dotsT = null;
-let profileId = localStorage.getItem('profile') || null, curPage = 0;
+const PREVIEW = /[?&]preview=1/.test(location.search);   // embedded in the PC editor: shows the layout, runs nothing
+let profileId = PREVIEW ? null : localStorage.getItem('profile') || null, curPage = 0;
 
 const hexToRgba = (h, a) => { const n = parseInt(h.replace('#', ''), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
 function toast(msg, ok) { const t = $('toast'); t.textContent = msg; t.className = 'show' + (ok ? ' ok' : ''); clearTimeout(toast.h); toast.h = setTimeout(() => t.className = '', ok ? 1400 : 3500); }
@@ -222,6 +224,7 @@ let shownPages = [], subMedia = false, subScreen = false, med = null, lyr = { ke
 const curKind = () => { const p = shownPages[curPage]; return p && p.kind; };
 function sub(type, on) { send({ t: type, on }); }
 function activate() {
+  if (PREVIEW) return;
   const k = curKind();
   const wantMedia = k === 'lyrics', wantScreen = k === 'screen';
   if (connected) {
@@ -418,6 +421,7 @@ function renderDiscord() {
   });
 }/** Jump to the Discord page when a call starts; go back when it ends. Swiping away during a call is respected. */
 function autoDiscordPage() {
+  if (PREVIEW) return;
   if (folderId) { if (discord.inCall) { /* keep the folder; the user is busy */ } return; }
   const idx = shownPages.findIndex(p => p.kind === 'discord' && p.autoOpen !== false);
   if (idx < 0) return;
@@ -576,6 +580,7 @@ function press(k, b) {
   const at = b.action && b.action.type;
   if (at === 'folder') { folderId = b.action.pageId || null; curPage = 0; render(); return; }
   if (at === 'back') { folderId = null; curPage = 0; render(); return; }
+  if (PREVIEW) return;
   if (!b.action || b.action.type === 'none') return;
   if (!connected) { toast('Not connected to the PC'); return; }
   const run = () => {
@@ -635,10 +640,29 @@ $('mReconnect').onclick = () => { $('menu').classList.remove('show'); try { ws.c
 $('mReload').onclick = () => { $('menu').classList.remove('show'); send({ t: 'layout_get', id: 0 }); };
 $('mSettings').onclick = () => { $('menu').classList.remove('show'); native('settings'); };
 
+/** Preview mode: the PC editor sends the layout (and which page is open); sample data fills the live tiles and widget pages. */
+function startPreview() {
+  document.body.classList.add('preview');
+  connected = true;
+  status = { cpu: 37, ram: 52, uptime: 93784, volume: 70, brightness: 80, muted: false, micMuted: false, disks: { C: { free: 512, total: 953 }, D: { free: 300, total: 931 }, E: { free: 120, total: 476 } } };
+  discord = { rpc: 'ok', status: '', inCall: true, channel: 'General', mute: false, deaf: false, users: [{ id: '1', name: 'You', avatar: '', mute: false, deaf: false, speaking: true }, { id: '2', name: 'Alex', avatar: '', mute: true, deaf: false, speaking: false }, { id: '3', name: 'Sam', avatar: '', mute: false, deaf: false, speaking: false }] };
+  obs = { rpc: 'ok', status: '', scene: 'Gameplay', scenes: ['Starting Soon', 'Gameplay', 'Chatting'], streaming: false, recording: false, paused: false, vcam: false, streamTime: '', recTime: '', studio: false, preview: '', replay: false, itemsScene: 'Gameplay', items: [{ id: 1, name: 'Overlay', enabled: true, locked: true, group: false }, { id: 2, name: 'Webcam', enabled: true, locked: false, group: false }, { id: 3, name: 'Game Capture', enabled: true, locked: false, group: false }], transitions: ['Cut', 'Fade', 'Slide'], transition: 'Fade', transitionMs: 300, inputs: [{ name: 'Mic/Aux', mute: false, vol: 0.8 }, { name: 'Desktop Audio', mute: false, vol: 0.5 }] };
+  window.addEventListener('message', e => {
+    const m = e.data; if (!m || m.sd !== 'preview') return;
+    if (m.layout) layout = m.layout;
+    if (m.profile) profileId = m.profile;
+    folderId = m.folder || null;
+    if (typeof m.page === 'number') curPage = m.page;
+    render();
+  });
+  try { parent.postMessage({ sd: 'preview-ready' }, '*'); } catch (x) {}
+}
+
 (async function boot() {
   try { icons = await (await fetch('/assets/icons.json')).json(); } catch (e) {}
   try { await document.fonts.load('24px MI'); } catch (e) {}
   if (icons.settings) $('gear').textContent = String.fromCodePoint(icons.settings);
+  if (PREVIEW) { startPreview(); return; }
   try { const c = localStorage.getItem('layout'); if (c) setLayout(JSON.parse(c), false); } catch (e) {}
   if (!layout) render();
   connect();

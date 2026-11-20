@@ -74,6 +74,53 @@
   #panel { column-width:300px; column-gap:22px; }
   #panel > * { break-inside:avoid-column; }  .presets { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; } .presets button { padding:4px 8px; font-size:12px; }
   .tabs .tab.folder { width:auto; padding:0 12px; }
+  /* ===================== polish ===================== */
+  :root { --r:12px; --ring:0 0 0 2px #7c4dff88; --cardbg:#ffffff07; }
+  body { background:radial-gradient(1200px 500px at 50% -10%, #1a1050 0, transparent 60%), var(--bg); }
+  *::-webkit-scrollbar { width:10px; height:10px; } *::-webkit-scrollbar-track { background:transparent; }
+  *::-webkit-scrollbar-thumb { background:#ffffff22; border-radius:10px; border:2px solid transparent; background-clip:content-box; } *::-webkit-scrollbar-thumb:hover { background:#ffffff3a; border:2px solid transparent; background-clip:content-box; }
+  select,input[type=text],input[type=number] { transition:border-color .15s, box-shadow .15s; }
+  select:focus,input:focus { outline:none; border-color:var(--purple); box-shadow:var(--ring); }
+  button { transition:background .15s, border-color .15s, transform .08s, box-shadow .15s; }
+  button:hover { background:#1f1f3d; border-color:#7c4dff99; } button:active { transform:translateY(1px); } button:focus-visible { outline:none; box-shadow:var(--ring); }
+  button.pri { background:linear-gradient(135deg,#7c4dff,#5b3bd6); border-color:#7c4dff; box-shadow:0 4px 14px #7c4dff44; } button.pri:hover { background:linear-gradient(135deg,#8c63ff,#6a49e6); }
+  button.danger:hover { background:#3a1520; border-color:#ff6b81; }
+  button.wide { width:100%; text-align:left; margin-top:8px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px; } .grid2 button { text-align:left; padding:7px 9px; }
+  details.sec { background:var(--cardbg); border:1px solid var(--line); border-radius:var(--r); margin:0 0 10px; overflow:hidden; }
+  details.sec > summary { list-style:none; cursor:pointer; padding:10px 12px; font-weight:700; letter-spacing:.02em; display:flex; align-items:center; gap:8px; color:#e1dcff; user-select:none; }
+  details.sec > summary::-webkit-details-marker { display:none; } details.sec > summary i { font-style:normal; font-size:15px; }
+  details.sec > summary::after { content:'▸'; margin-left:auto; color:var(--muted); transition:transform .15s; } details.sec[open] > summary::after { transform:rotate(90deg); }
+  details.sec .secbody { padding:2px 12px 12px; } details.sec[open] > summary { border-bottom:1px solid var(--line); }
+  label.f.chk { display:flex; gap:8px; align-items:center; color:var(--text); }
+  .prow { transition:background .15s, border-color .15s; } .prow:hover { border-color:#7c4dff88; }
+  .col h2 { background:linear-gradient(180deg,#ffffff06,transparent); }
+  /* toolbox */
+  .act { border-left:3px solid var(--cc,transparent); transition:transform .1s, border-color .15s, background .15s; } .act:hover { background:#1f1f3d; transform:translateX(2px); } .act:active { cursor:grabbing; }
+  #lib details[open] > summary { color:#fff; }
+  /* stage + phone preview */
+  .stage { flex:1; min-height:0; display:flex; gap:12px; margin:12px 14px 4px; position:relative; }
+  .stage #gridWrap { margin:0; flex:1; min-width:0; }
+  #phoneBox { flex:none; width:236px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; }
+  .phone { width:210px; aspect-ratio:9/19; max-height:100%; border-radius:30px; border:3px solid #2c2c4a; background:#000; overflow:hidden; position:relative; box-shadow:0 12px 36px #000a, 0 0 0 1px #ffffff10 inset; }
+  .phone::before { content:''; position:absolute; top:6px; left:50%; width:54px; height:5px; margin-left:-27px; border-radius:4px; background:#ffffff22; z-index:3; pointer-events:none; }
+  .phone iframe { width:390px; height:calc(390px * 19 / 9); border:0; transform:scale(.5385); transform-origin:0 0; pointer-events:none; }
+  .ph-cap { color:var(--muted); font-size:12px; }
+  .pvbtn { position:absolute; top:8px; right:8px; z-index:5; padding:4px 8px; border-radius:10px; background:#0b0b1ccc; }
+  @media (max-width:1280px) { #phoneBox { width:180px; } .phone { width:160px; } .phone iframe { transform:scale(.41); } }
+  /* keys */
+  .key { transition:transform .12s, box-shadow .15s, outline-color .15s; } .key:not(.empty):hover { transform:translateY(-2px); }
+  .key.sel { outline:2px solid #fff; outline-offset:2px; box-shadow:0 0 0 6px #7c4dff55, 0 8px 24px #000a; z-index:2; }
+  .key.empty:hover { background:#7c4dff22; border-color:#7c4dff; color:#b9a9ff; }
+  .tab { transition:background .15s, transform .1s; } .tab:hover { background:#252550; transform:translateY(-1px); } .tab.on { background:linear-gradient(135deg,#7c4dff,#5b3bd6); box-shadow:0 4px 14px #7c4dff55; }
+  /* inspector */
+  .sect { display:flex; align-items:center; gap:7px; margin:16px 0 4px; padding-bottom:6px; font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; color:#b9a9ff; border-bottom:1px solid var(--line); break-after:avoid; } #panel > .sect:first-child { margin-top:2px; }
+  .empty-card { border:1px dashed #7c4dff66; border-radius:var(--r); padding:18px; background:radial-gradient(400px 120px at 0 0,#7c4dff1f,transparent); max-width:560px; } .empty-card h3 { margin:0 0 8px; font-size:15px; color:#fff; text-transform:none; letter-spacing:0; }
+  .empty-card ul { margin:8px 0 12px 18px; padding:0; color:#cfcff5; line-height:1.7; }
+  main { grid-template-columns:232px minmax(0,1fr) 300px !important; }
+  .grid2 button { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:12px; padding:7px 8px; }
+  kbd { background:#ffffff14; border:1px solid #ffffff22; border-bottom-width:2px; border-radius:5px; padding:0 5px; font:11px system-ui; color:#e9e5ff; }
+  #toast { position:fixed; left:50%; bottom:22px; transform:translate(-50%,20px); background:#2a1020; border:1px solid #ff6b81; color:#ffd7de; padding:10px 16px; border-radius:12px; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:50; box-shadow:0 10px 30px #000a; } #toast.show { opacity:1; transform:translate(-50%,0); }
 </style>
 </head>
 <body>
@@ -81,44 +128,59 @@
   <div class="logo">▶</div><h1>StreamDeck Editor <span style="color:var(--muted);font-weight:400">— drag actions onto keys; the phone updates instantly</span></h1>
   <div class="sp"></div><div id="info" style="color:var(--muted)"></div><div id="saved">Loading…</div>
 </header>
+<div id="toast"></div>
 <main>
   <section class="col left">
-    <h2>Profile</h2>
+    <h2>Setup</h2>
     <div class="scroll">
-      <div id="profList"></div><select id="profSel" hidden></select>
-      <div class="stack">
-        <button id="profAdd">+ New profile</button><button id="profRen">Rename</button>
-        <button id="profDefault" title="The profile phones open by default">Set as phone default</button><button id="profDel" class="danger">Delete profile</button>
-      </div>
-      <h3>Device</h3>
-      <div class="row"><input type="number" id="cols" min="1" max="12"><span style="flex:0">×</span><input type="number" id="rows" min="1" max="12"></div>
-      <div class="hint">columns × rows (key size changes with it)</div>
-      <div class="presets" id="sizePresets"></div>
-      <button id="sizeAll" style="margin-top:6px;width:100%;text-align:left">Apply this size to all pages</button>
-      <div class="stack"><button id="pgRen">Rename page</button><button id="pgDel" class="danger">Delete page</button></div>
-      <h3>Look</h3>
-      <select id="styleSel" style="width:100%"><option value="flat">Flat</option><option value="neon">Neon glow</option></select>
-      <h3>Keys</h3>
-      <label class="f">Key opacity (lower = see background)</label><input type="range" id="keyAlpha" min="0" max="1" step="0.05" style="width:100%">
-      <label class="f">Glass blur</label><input type="range" id="keyBlur" min="0" max="20" step="1" style="width:100%">
-      <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="showLabels"> Show titles on keys</label>
-      <label class="f">Icons for new keys</label>
-      <select id="iconStyle" style="width:100%"><option value="classic">Classic (clean line icons)</option><option value="emoji">Colorful (emoji)</option></select>
-      <div class="stack"><button id="colorizeAll" title="Turns every key's classic icon into a colorful emoji (keys with your own image or live tiles are kept)">🎨 Make all keys colorful</button></div>
-      <h3>Live background</h3>
-      <div class="stack"><button id="bgBtn">Upload image / GIF / video…</button></div>
-      <select id="bgPreset" style="width:100%;margin-top:6px"><option value="">Animated preset…</option><option value="aurora">Aurora</option><option value="grid">Neon grid</option><option value="waves">Waves</option><option value="stars">Stars</option></select>
-      <label class="f">Darken background</label><input type="range" id="bgDim" min="0" max="0.9" step="0.05" style="width:100%">
-      <div class="stack"><button id="bgClr">Clear background</button></div>
-      <div class="hint" id="bgMsg">Video: mp4/webm, ideally 720p–1080p. Live backgrounds use more phone battery.</div>
-      <input type="file" id="bgFile" accept="image/*,video/mp4,video/webm" hidden>
+      <details class="sec" data-k="profile" open><summary><i>👤</i>Profile</summary><div class="secbody">
+        <div id="profList"></div><select id="profSel" hidden></select>
+        <div class="grid2">
+          <button id="profAdd" title="New profile">＋ New</button><button id="profRen" title="Rename profile">✏️ Rename</button>
+          <button id="profDefault" title="Make this the profile phones open by default">★ Default</button><button id="profDel" class="danger" title="Delete profile">🗑 Delete</button>
+        </div>
+      </div></details>
+
+      <details class="sec" data-k="page" open><summary><i>📄</i>Page</summary><div class="secbody">
+        <label class="f">Grid size (columns × rows)</label>
+        <div class="row"><input type="number" id="cols" min="1" max="12"><span style="flex:0">×</span><input type="number" id="rows" min="1" max="12"></div>
+        <div class="presets" id="sizePresets"></div>
+        <button id="sizeAll" class="wide">Apply this size to all pages</button>
+        <div class="grid2" style="margin-top:8px"><button id="pgRen" title="Rename this page">✏️ Rename</button><button id="pgDel" class="danger" title="Delete this page">🗑 Delete</button></div>
+      </div></details>
+
+      <details class="sec" data-k="look"><summary><i>🎨</i>Keys &amp; look</summary><div class="secbody">
+        <label class="f">Style</label>
+        <select id="styleSel" style="width:100%"><option value="flat">Flat</option><option value="neon">Neon glow</option></select>
+        <label class="f">Key opacity <span class="hint" style="margin:0">(lower = see background)</span></label><input type="range" id="keyAlpha" min="0" max="1" step="0.05" style="width:100%">
+        <label class="f">Glass blur</label><input type="range" id="keyBlur" min="0" max="20" step="1" style="width:100%">
+        <label class="f chk"><input type="checkbox" id="showLabels"> Show titles on keys</label>
+        <label class="f">Icons for new keys</label>
+        <select id="iconStyle" style="width:100%"><option value="classic">Classic (clean line icons)</option><option value="emoji">Colorful (emoji)</option></select>
+        <button id="colorizeAll" class="wide" title="Turns every key's classic icon into a colorful emoji (keys with your own image or live tiles are kept)">🎨 Make all keys colorful</button>
+      </div></details>
+
+      <details class="sec" data-k="bg"><summary><i>🌄</i>Live background</summary><div class="secbody">
+        <button id="bgBtn" class="wide">⬆ Upload image / GIF / video…</button>
+        <select id="bgPreset" style="width:100%;margin-top:8px"><option value="">Animated preset…</option><option value="aurora">Aurora</option><option value="grid">Neon grid</option><option value="waves">Waves</option><option value="stars">Stars</option></select>
+        <label class="f">Darken background</label><input type="range" id="bgDim" min="0" max="0.9" step="0.05" style="width:100%">
+        <button id="bgClr" class="wide" style="margin-top:8px">✕ Clear background</button>
+        <div class="hint" id="bgMsg">Video: mp4/webm, ideally 720p–1080p. Live backgrounds use more phone battery.</div>
+        <input type="file" id="bgFile" accept="image/*,video/mp4,video/webm" hidden>
+      </div></details>
     </div>
   </section>
-
   <section class="center">
-    <div id="gridWrap"><div id="bgLayer" style="border-radius:16px"></div><div id="grid"></div></div>
+    <div class="stage">
+      <div id="gridWrap"><div id="bgLayer" style="border-radius:16px"></div><div id="grid"></div></div>
+      <div id="phoneBox">
+        <div class="phone"><iframe id="phoneFrame" src="/deck?preview=1" title="Phone preview" tabindex="-1"></iframe></div>
+        <div class="ph-cap">📱 Phone preview</div>
+      </div>
+      <button id="togglePhone" class="pvbtn" title="Show / hide the phone preview">📱</button>
+    </div>
     <div class="tabs" id="pageTabs"></div>
-    <div class="insp"><h2>Key settings <span class="hint" style="text-transform:none;letter-spacing:0">— click a key to configure it</span></h2><div class="scroll" id="panel"></div></div>
+    <div class="insp"><h2>Key settings <span class="hint" style="text-transform:none;letter-spacing:0">click a key to configure it · <kbd>Del</kbd> remove · <kbd>Ctrl</kbd>+<kbd>D</kbd> duplicate · arrows move · <kbd>Esc</kbd> deselect</span></h2><div class="scroll" id="panel"></div></div>
   </section>
 
   <section class="col lib">
@@ -390,8 +452,8 @@ function draw(panel = true) {
 }
 
 // ------------------------------------------------------------------ library (left)
-function libItem(mi, text, payload, sub, imgSrc) {
-  const d = el('div', { className: 'act', draggable: true, title: 'Drag onto a key, or click to add' });
+function libItem(mi, text, payload, sub, imgSrc, color) {
+  const d = el('div', { className: 'act', draggable: true, title: 'Drag onto a key, or click to add' }); if (color) d.style.setProperty('--cc', color);
   d.append(imgSrc ? el('img', { src: imgSrc }) : el('span', { className: 'mi', textContent: glyph(mi) }), el('span', { className: 'nm', textContent: text }));
   if (sub) d.append(el('small', { textContent: sub }));
   d.ondragstart = e => { e.dataTransfer.setData('application/x-sd', JSON.stringify(payload)); e.dataTransfer.effectAllowed = 'copy'; };
@@ -403,10 +465,10 @@ function buildLib() {
   const lib = $('lib'); lib.innerHTML = '';
   const section = (title, items, open) => { const d = el('details', { open: !!open }); d.append(el('summary', { textContent: title })); items.forEach(i => d.append(i)); lib.append(d); return d; };
   const cats = {}; ACTIONS.forEach(a => (cats[a.cat] = cats[a.cat] || []).push(a));
-  Object.entries(cats).forEach(([c, list]) => section(c, list.map(a => libItem(a.icon, a.label, { kind: 'action', type: a.type })), c === 'Audio'));
-  section('Live tiles (PC info)', WIDGETS.map(([w, t, ic], i) => libItem(ic, t, { kind: 'tile', i })));
-  section('Presets', PRESETS.map(([label, icon], i) => libItem(icon, label, { kind: 'preset', i })));
-  const ad = section('Apps & games', [el('div', { className: 'hint', textContent: 'Open this section to scan the PC…' })]);
+  Object.entries(cats).forEach(([c, list]) => section((CAT_ICON[c] || '▪') + '  ' + c, list.map(a => libItem(a.icon, a.label, { kind: 'action', type: a.type }, undefined, undefined, (CAT_COLORS[a.cat] || [])[0])), c === 'Audio'));
+  section('📊  Live tiles (PC info)', WIDGETS.map(([w, t, ic], i) => libItem(ic, t, { kind: 'tile', i })));
+  section('⭐  Presets', PRESETS.map(([label, icon], i) => libItem(icon, label, { kind: 'preset', i })));
+  const ad = section('🧩  Apps & games', [el('div', { className: 'hint', textContent: 'Open this section to scan the PC…' })]);
   ad.ontoggle = async () => { if (!ad.open || ad.dataset.loaded) return; ad.dataset.loaded = '1'; await loadApps(); fillApps(ad); };
 }
 function fillApps(ad) {
@@ -432,13 +494,22 @@ function drawPanel() {
   const p = $('panel'); p.innerHTML = '';
   const b = sel >= 0 ? page().slots[sel] : null;
   if (!b) {
-    p.append(el('p', { className: 'hint', textContent: sel >= 0 ? 'This key is empty. Drag an action here, or:' : 'Click a key to edit it. Drag actions from the left onto keys.' }));
-    if (sel >= 0) p.append(el('button', { className: 'pri', textContent: '+ Create blank key', onclick: () => { page().slots[sel] = newButton({ label: 'New key' }); changed(); } }));
+    const card = el('div', { className: 'empty-card' });
+    if (sel >= 0) {
+      card.append(el('h3', { textContent: '＋ This key is empty' }), el('div', { className: 'hint', textContent: 'Drag something from the Toolbox on the right onto it, click an item in the Toolbox to put it here, or start from a blank key.' }),
+        el('button', { className: 'pri', textContent: '＋ Create blank key', onclick: () => { page().slots[sel] = newButton({ label: 'New key' }); changed(); } }));
+    } else {
+      card.append(el('h3', { textContent: '👋 Build your deck' }));
+      const ul = el('ul'); ['Drag an action from the Toolbox (right) onto a key, or click it to add it to the next free key.', 'Click a key to change its icon, color, title and what it does.', 'Drag keys around to rearrange. Use Page and Keys & look (left) for sizes, themes and a live background.', 'Everything saves by itself and the phone preview updates instantly.'].forEach(t => ul.append(el('li', { textContent: t })));
+      card.append(ul);
+    }
+    p.append(card);
     return;
   }
   const upd = redraw => { changed(); };
   const field = (label, node) => el('label', { className: 'f' }, label, node);
   const lab = el('input', { type: 'text', value: b.label }); lab.oninput = () => { b.label = lab.value; changed(true); };
+  p.append(sect('Appearance', '🎨'));
   p.append(field('Title (optional)', lab));
   const wsel = el('select'); wsel.append(el('option', { value: '', textContent: 'None – normal key' }));
   WIDGETS.forEach(([v, t]) => wsel.append(el('option', { value: v, textContent: 'Live: ' + t, selected: b.widget === v })));
@@ -529,10 +600,11 @@ function drawPanel() {
   const fa = el('input', { type: 'range', min: 0, max: 1, step: 0.05, value: b.fillAlpha != null ? b.fillAlpha : (L.keyAlpha != null ? L.keyAlpha : 0.55) });
   fa.oninput = () => { b.fillAlpha = +fa.value; changed(true); };
   p.append(field('Opacity of this key', fa));
+  p.append(sect('Behavior', '⚙️'));
   const cf = el('input', { type: 'checkbox', checked: b.confirm }); cf.onchange = () => { b.confirm = cf.checked; changed(); };
   p.append(el('label', { className: 'f', style: 'display:flex;gap:8px;align-items:center' }, cf, 'Ask for confirmation on the phone'));
 
-  p.append(el('hr'), el('b', { textContent: 'What it does on the PC' }));
+  p.append(sect('What it does on your PC', '⚡'));
   p.append(actionEditor(b.action, () => changed(true), () => changed(), true));
   const test = el('button', { textContent: '▶ Test on this PC', className: 'pri', style: 'margin-top:12px' }), res = el('div', { className: 'hint' });
   test.onclick = async () => { res.textContent = 'Running…'; try { const r = await (await fetch('/api/test-action', { method: 'POST', body: JSON.stringify(b.action), ...J })).json(); res.textContent = r.ok ? ('Done' + (r.message ? ' – ' + r.message : '')) : 'Failed: ' + r.error; res.style.color = r.ok ? '#22e58b' : '#ff6b81'; } catch (e) { res.textContent = e.message; } };
@@ -608,6 +680,54 @@ $('pgDel').onclick = () => { if (prof().pages.length < 2) return alert('A profil
 const sizeChange = () => { const c = Math.max(1, Math.min(12, +$('cols').value || 1)), r = Math.max(1, Math.min(12, +$('rows').value || 1)); resizePage(page(), c, r); sel = -1; changed(); };
 [[4,3],[5,3],[4,4],[6,4],[8,4],[8,6]].forEach(([c, r]) => $('sizePresets').append(el('button', { textContent: `${c}×${r}`, title: `${c * r} keys`, onclick: () => { resizePage(page(), c, r); sel = -1; changed(); } })));
 $('sizeAll').onclick = () => { const p = page(); prof().pages.forEach(pg => { if (pg !== p) resizePage(pg, p.cols, p.rows); }); changed(); };$('cols').onchange = sizeChange; $('rows').onchange = sizeChange;
+
+// ------------------------------------------------------------------ polish: toolbox icons, toast, shortcuts, live phone preview
+const CAT_ICON = { Audio: '🔊', Display: '🖥️', Input: '⌨️', Launch: '🚀', Power: '🔌', Flow: '🔀', Discord: '🎮', OBS: '🎬' };
+function sect(t, ic) { return el('div', { className: 'sect', textContent: (ic ? ic + '  ' : '') + t }); }
+function showToast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(showToast.h); showToast.h = setTimeout(() => t.classList.remove('show'), 4500); }
+const setSaved0 = setSaved; setSaved = (txt, cls) => { setSaved0(txt, cls); if (cls === 'err') showToast(txt); };
+
+document.querySelectorAll('details.sec').forEach(d => {   // remember which setup sections are open
+  const k = 'sdsec:' + d.dataset.k;
+  try { const v = localStorage.getItem(k); if (v === '1') d.open = true; else if (v === '0') d.open = false; } catch (e) {}
+  d.addEventListener('toggle', () => { try { localStorage.setItem(k, d.open ? '1' : '0'); } catch (e) {} });
+});
+
+document.addEventListener('keydown', e => {
+  const t = e.target; if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+  if (!L) return; const pg = page();
+  if (e.key === 'Escape') { sel = -1; draw(); return; }
+  if (sel < 0 || pg.kind) return;
+  if (e.key === 'Delete' || e.key === 'Backspace') { if (pg.slots[sel]) { pg.slots[sel] = null; changed(); } e.preventDefault(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+    e.preventDefault(); const b = pg.slots[sel]; if (!b) return;
+    const cov = coveredSet(pg), i = pg.slots.findIndex((s, j) => !s && !cov.has(j));
+    if (i < 0) { showToast('This page is full'); return; }
+    const c = JSON.parse(JSON.stringify(b)); c.id = uid(); pg.slots[i] = c; sel = i; changed(); return;
+  }
+  const dx = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0, dy = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+  if (dx || dy) {
+    e.preventDefault(); const cov = coveredSet(pg); let c = sel % pg.cols, r = Math.floor(sel / pg.cols);
+    for (let n = 0; n < Math.max(pg.cols, pg.rows); n++) { c += dx; r += dy; if (c < 0 || r < 0 || c >= pg.cols || r >= pg.rows) return; if (!cov.has(r * pg.cols + c)) { sel = r * pg.cols + c; draw(); return; } }
+  }
+});
+
+// live phone preview: the real phone page in an iframe, fed with the layout being edited
+const phone = { frame: $('phoneFrame'), ready: false, timer: null };
+window.addEventListener('message', e => { if (e.data && e.data.sd === 'preview-ready') { phone.ready = true; syncPreview(); } });
+function syncPreview() {
+  if (!phone.ready || !L || $('phoneBox').style.display === 'none') return;
+  clearTimeout(phone.timer);
+  phone.timer = setTimeout(() => {
+    const pf = prof(), pg = page(); let folder = null, idx = 0;
+    if (pg.hidden) folder = pg.id; else idx = pf.pages.slice(0, gi).filter(x => !x.hidden).length;
+    try { phone.frame.contentWindow.postMessage({ sd: 'preview', layout: L, profile: pf.id, page: idx, folder }, '*'); } catch (x) {}
+  }, 120);
+}
+const draw0 = draw; draw = function (panel) { draw0(panel); syncPreview(); };
+{ let on = true; try { on = localStorage.getItem('sdphone') !== '0'; } catch (e) {}
+  const apply = () => { $('phoneBox').style.display = on ? '' : 'none'; $('togglePhone').style.opacity = on ? 1 : .6; if (on) syncPreview(); };
+  $('togglePhone').onclick = () => { on = !on; try { localStorage.setItem('sdphone', on ? '1' : '0'); } catch (e) {} apply(); }; apply(); }
 
 (async function boot() {
   if (location.search.includes('embedded=1')) document.body.classList.add('embedded');
