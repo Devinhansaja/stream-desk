@@ -28,6 +28,7 @@ public sealed class HostServer : IDisposable
         public volatile bool Media;     // viewing a lyrics / now-playing page
         public volatile bool Screen;    // viewing the shared PC screen
         public volatile bool Stats;     // viewing the game stats page
+        public volatile bool Pad;       // viewing the controller page
         public string LyricsKey = "";   // lyrics this client already has
     }
 
@@ -38,6 +39,7 @@ public sealed class HostServer : IDisposable
     public DiscordRpc Discord { get; } = new();
     public ObsRpc Obs { get; } = new();
     public GameStats Game { get; } = new();
+    public GamepadMonitor Gamepad { get; } = new();
     string lastFg = "";
     readonly ConcurrentDictionary<Guid, Client> clients = new();
     readonly ConcurrentDictionary<string, (int fails, DateTime until)> failures = new();
@@ -72,6 +74,8 @@ public sealed class HostServer : IDisposable
         Obs.Changed += () => _ = BroadcastObs();
         Game.SubCount = () => clients.Values.Count(x => x.Device != null && x.Stats);
         Game.Changed += () => _ = BroadcastGame();
+        Gamepad.SubCount = () => clients.Values.Count(x => x.Device != null && x.Pad);
+        Gamepad.Changed += () => _ = BroadcastPad();
         Tunnel = new Tunnel(store.Data.Port);
         Tunnel.Changed += () => { WriteDevPairing(); Changed?.Invoke(); };
     }
@@ -197,6 +201,7 @@ public sealed class HostServer : IDisposable
         _ = Task.Run(MediaLoop);
         _ = Task.Run(ScreenLoop);
         Game.Start();
+        Gamepad.Start();
         _ = Task.Run(ForegroundLoop);
         _ = Task.Run(async () =>
         {
@@ -216,6 +221,7 @@ public sealed class HostServer : IDisposable
         Discord.Dispose();
         Obs.Dispose();
         Game.Dispose();
+        Gamepad.Dispose();
         Tunnel.Dispose();
         try { udp?.Close(); } catch { }
         try { app?.StopAsync(TimeSpan.FromSeconds(1)).Wait(2000); } catch { }
@@ -475,6 +481,11 @@ public sealed class HostServer : IDisposable
                 if (c.Stats) await Send(c, Game.Snapshot());
                 break;
 
+            case "pad_sub":
+                c.Pad = m["on"] is JsonValue pdv && pdv.TryGetValue<bool>(out var pdon) && pdon;
+                if (c.Pad) await Send(c, Gamepad.Snapshot());
+                break;
+
             case "stats_helper":
                 Game.Fps.StartHelper();
                 break;
@@ -675,6 +686,13 @@ public sealed class HostServer : IDisposable
             catch (OperationCanceledException) { break; }
             catch { }
         }
+    }
+
+    async Task BroadcastPad()
+    {
+        var snap = Gamepad.Snapshot();
+        foreach (var c in clients.Values.Where(x => x.Device != null && x.Pad))
+            await Send(c, JsonNode.Parse(snap.ToJsonString())!.AsObject());
     }
 
     async Task BroadcastGame()

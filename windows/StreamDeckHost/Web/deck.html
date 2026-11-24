@@ -105,6 +105,23 @@
   .dlist { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:8px; }
   .dc { background:#2b2d31; border:1px solid #ffffff22; border-radius:14px; padding:16px; font-size:16px; font-weight:600; }
   .dc:active { background:#5865f2; }
+  .padw { position:absolute; inset:0; display:grid; grid-template-rows:auto minmax(0,1fr) auto auto; gap:6px; padding:calc(10px + env(safe-area-inset-top)) 12px 10px; background:rgba(0,0,0,.35); overflow:hidden; }
+  .padw .ph { display:flex; align-items:center; gap:10px; } .padw .ph b { font-size:19px; } .padw .pst { font-size:12px; opacity:.8; flex:1; } .padw .pst i { display:inline-block; width:8px; height:8px; border-radius:50%; background:#8a93a6; margin-right:6px; } .padw .pst.on i { background:#22e58b; box-shadow:0 0 8px #22e58b; }
+  .padw .pvw { display:flex; gap:4px; } .padw .pvw button { padding:5px 12px; border-radius:10px; border:1px solid #ffffff30; background:#ffffff12; color:#fff; font-size:12px; } .padw .pvw button.on { background:#7c4dff; border-color:#7c4dff; }
+  .padw .pstage { position:relative; min-height:0; touch-action:none; }
+  .padw .pscene { position:absolute; inset:0; perspective:1500px; display:none; } .padw .pscene.on { display:block; }
+  .padw .pad3d { position:absolute; left:50%; top:50%; width:860px; height:620px; transform-style:preserve-3d; will-change:transform; }
+  .padw .pad3d.top { height:340px; }
+  .padw svg.pl { position:absolute; inset:0; width:100%; height:100%; transform-style:preserve-3d; overflow:visible; pointer-events:none; } .padw svg.pl [data-k] { pointer-events:all; cursor:pointer; }
+  .padw .k { transition:fill .08s, filter .08s; } .padw .k.hot { fill:#22e58b !important; filter:drop-shadow(0 0 14px #22e58b); }
+  .padw .stk { transition:transform .06s linear; }
+  .padw .lbl { fill:#fff; font:600 22px 'Segoe UI',system-ui,sans-serif; paint-order:stroke; stroke:#000; stroke-width:5px; stroke-linejoin:round; } .padw .ln { stroke:#ffffffaa; stroke-width:2; }
+  .padw.nolbl .lbl, .padw.nolbl .ln { display:none; }
+  .padw .pnow { font-size:15px; font-weight:600; min-height:22px; text-align:center; color:#22e58b; } .padw .pnow small { color:#fff; opacity:.75; font-weight:400; margin-left:6px; }
+  .padw .plegend { display:flex; flex-wrap:wrap; gap:5px; max-height:34vh; overflow:auto; }
+  .padw .chip { background:rgba(255,255,255,.1); border:1px solid transparent; border-radius:10px; padding:4px 9px; font-size:11px; line-height:1.25; cursor:pointer; } .padw .chip b { display:block; font-size:14px; }
+  .padw .chip.hot { background:#22e58b; color:#000; border-color:#fff; } .padw .chip small { opacity:.75; }
+  @media (orientation:landscape) { .padw { grid-template-columns:minmax(0,1fr) 250px; grid-template-rows:auto auto minmax(0,1fr); } .padw .ph { grid-column:1 / span 2; } .padw .pstage { grid-column:1; grid-row:2 / span 2; } .padw .pnow { grid-column:2; grid-row:2; align-self:center; } .padw .plegend { grid-column:2; grid-row:3; max-height:none; overflow:auto; align-content:flex-start; } }
   .gsw { position:absolute; inset:0; overflow:auto; display:flex; flex-direction:column; gap:10px; padding:calc(14px + env(safe-area-inset-top)) 14px 14px; background:rgba(0,0,0,.35); }
   .gsw .gh { display:flex; align-items:baseline; gap:10px; } .gsw .gh b { font-size:20px; } .gsw .gh span { opacity:.7; font-size:13px; }
   .gsw .gbig { display:flex; align-items:center; gap:14px; background:rgba(255,255,255,.08); border-radius:16px; padding:10px 16px; }
@@ -257,10 +274,12 @@ function activate() {
     if (wantMedia !== subMedia) { subMedia = wantMedia; sub('media_sub', wantMedia); }
     if (wantScreen !== subScreen) { subScreen = wantScreen; sub('screen_sub', wantScreen); }
     const wantStats = k === 'gamestats'; if (wantStats !== subStats) { subStats = wantStats; sub('stats_sub', wantStats); }
+    const wantPad = k === 'controller'; if (wantPad !== subPad) { subPad = wantPad; sub('pad_sub', wantPad); }
   }
   document.querySelectorAll('iframe.ytw').forEach(f => { const on = k === 'youtube' && f.closest('.wpage') === $('pages').children[curPage]; const want = on ? f.dataset.src : 'about:blank'; if (f.getAttribute('src') !== want) f.setAttribute('src', want); });
 }
-function resetSubs() { subMedia = false; subScreen = false; subStats = false; activate(); send({ t: 'fg_get' }); }
+let subPad = false;
+function resetSubs() { subMedia = false; subScreen = false; subStats = false; subPad = false; activate(); send({ t: 'fg_get' }); }
 function mkPage(extra) { const el = document.createElement('div'); el.className = 'page wpage'; el.dataset.kind = extra; ['l', 'r'].forEach(s => { const e = document.createElement('div'); e.className = 'edge ' + s; el.append(e); }); return el; }
 function widgetPage(pg) {
   const el = mkPage(pg.kind);
@@ -309,7 +328,13 @@ function widgetPage(pg) {
     const dur = w.querySelector('.otd input'); let dl = 0;
     dur.addEventListener('input', () => { w.querySelector('.otd b').textContent = dur.value + ' ms'; w._drag = true; const n = Date.now(); if (n - dl > 150) { dl = n; sendAct({ type: 'obs_transition_duration', ms: +dur.value }, true); } });
     dur.addEventListener('change', () => { sendAct({ type: 'obs_transition_duration', ms: +dur.value }, true); setTimeout(() => { w._drag = false; }, 600); });
-    el.append(w); setTimeout(renderObs, 0);  } else if (pg.kind === 'gamestats') {
+    el.append(w); setTimeout(renderObs, 0);  } else if (pg.kind === 'controller') {
+    const w = document.createElement('div'); w.className = 'padw';
+    w.innerHTML = '<div class="ph"><b>Controller</b><span class="pst"></span><div class="pvw"><button data-v="front" class="on">Front</button><button data-v="top">Top</button></div></div>'
+      + '<div class="pstage"><div class="pscene on" data-v="front"><div class="pad3d"></div></div><div class="pscene" data-v="top"><div class="pad3d top"></div></div></div>'
+      + '<div class="pnow">Drag to turn it. Tap a button to see its name.</div><div class="plegend"></div>';
+    el.append(w); initPad(w); setTimeout(renderPad, 0);
+  } else if (pg.kind === 'gamestats') {
     const w = document.createElement('div'); w.className = 'gsw idle';
     const cell = (k, l) => `<div class="gc" data-k="${k}"><div class="l">${l}</div><div class="v">–</div><div class="bar"><i></i></div></div>`;
     w.innerHTML = '<div class="gh"><b>Game</b><span class="gname">Waiting for a game…</span></div>'
@@ -324,6 +349,115 @@ function widgetPage(pg) {
     bindScreenTouch(img);
   }
   return el;
+}
+// ---- Controller page: 3D controller with button names (lights up live from the PC's XInput) ------
+const PADK = {
+  a: ['A', 'Bottom face button'], b: ['B', 'Right face button'], x: ['X', 'Left face button'], y: ['Y', 'Top face button'],
+  lb: ['LB', 'Left bumper (top shoulder button)'], rb: ['RB', 'Right bumper (top shoulder button)'], lt: ['LT', 'Left trigger (under LB)'], rt: ['RT', 'Right trigger (under RB)'],
+  back: ['View', 'Small button, top left'], start: ['Menu', 'Small button, top right'], share: ['Capture', 'Screenshot button'], guide: ['Home', 'Home / Guide button'],
+  l3: ['L3', 'Press the left stick down'], r3: ['R3', 'Press the right stick down'], du: ['D-pad ↑', 'Up'], dd: ['D-pad ↓', 'Down'], dl: ['D-pad ←', 'Left'], dr: ['D-pad →', 'Right'],
+  logo: ['PXN logo', 'Green logo button'],
+};
+const PADM = { a: 0x1000, b: 0x2000, x: 0x4000, y: 0x8000, lb: 0x100, rb: 0x200, back: 0x20, start: 0x10, guide: 0x400, share: 0x800, l3: 0x40, r3: 0x80, du: 1, dd: 2, dl: 4, dr: 8 };
+const PAD_GROUPS = [['a', 'b', 'x', 'y'], ['lb', 'rb', 'lt', 'rt'], ['back', 'start', 'share', 'guide', 'logo'], ['l3', 'r3', 'du', 'dd', 'dl', 'dr']];
+const PAD_BODY = 'M 70 120 C 80 60, 170 30, 250 32 C 300 34, 330 62, 400 62 C 470 62, 500 34, 560 32 C 650 30, 760 60, 790 120 C 830 220, 850 360, 830 480 C 815 560, 770 610, 725 590 C 690 575, 665 520, 640 490 C 610 455, 560 450, 520 450 L 300 450 C 260 450, 230 455, 205 490 C 180 520, 160 575, 125 590 C 80 610, 35 560, 25 480 C 5 360, 25 220, 70 120 Z';
+const PAD_WING = 'M 70 128 C 80 66 165 34 250 36 C 292 38 318 56 330 66 L 318 84 C 280 70 200 66 118 122 Z';
+const PAD_TAB = 'M 112 70 C 150 38 215 22 262 22 L 272 38 C 222 38 170 54 132 86 Z';
+const pl = (z, inner, cls) => `<svg class="pl ${cls || ''}" viewBox="0 0 860 620" style="transform:translateZ(${z}px)">${inner}</svg>`;
+function padFront() {
+  const shade = i => { const v = Math.round(6 + i * 2.2); return `rgb(${v},${v},${v + 3})`; };
+  let h = pl(-36, '<defs><radialGradient id="pdcap" cx="40%" cy="35%"><stop offset="0" stop-color="#4a4b50"/><stop offset="1" stop-color="#1a1b1e"/></radialGradient><linearGradient id="pdbody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34353b"/><stop offset="1" stop-color="#16171a"/></linearGradient><linearGradient id="pdgrey" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#b4b6ba"/><stop offset="1" stop-color="#85878c"/></linearGradient><filter id="pdblur"><feGaussianBlur stdDeviation="22"/></filter></defs><ellipse cx="430" cy="540" rx="380" ry="60" fill="#000" opacity=".55" filter="url(#pdblur)"/>');
+  for (let i = 0; i < 9; i++) h += pl(-24 + i * 2.6, `<path d="${PAD_BODY}" fill="${shade(i)}"/>`);
+  for (let i = 0; i < 3; i++) h += pl(-6 + i * 4, `<g class="k" data-k="lt" fill="#6f7177"><path d="${PAD_TAB}"/></g><g transform="translate(860 0) scale(-1 1)" class="k" data-k="rt" fill="#6f7177"><path d="${PAD_TAB}"/></g>`);
+  for (let i = 0; i < 4; i++) h += pl(-4 + i * 3, `<g class="k" data-k="lb" fill="${i < 3 ? '#8d8f95' : '#d0d2d6'}"><path d="${PAD_WING}"/></g><g class="k" data-k="rb" fill="${i < 3 ? '#8d8f95' : '#d0d2d6'}" transform="translate(860 0) scale(-1 1)"><path d="${PAD_WING}"/></g>`);
+  h += pl(0, `<path d="${PAD_BODY}" fill="url(#pdbody)" stroke="#ffffff22" stroke-width="3"/><path d="M 330 52 L 530 52 L 520 80 L 340 80 Z" fill="#b9bbbf"/><text x="430" y="73" text-anchor="middle" fill="#9be000" font-family="Segoe UI,sans-serif" font-weight="900" font-style="italic" font-size="26">PXN</text>`);
+  // wells, d-pad plate, led bars
+  h += pl(3, '<circle cx="145" cy="200" r="72" fill="#0d0e10" stroke="#9a9ca1" stroke-width="9"/><circle cx="537" cy="350" r="72" fill="#0d0e10" stroke="#9a9ca1" stroke-width="9"/><circle cx="280" cy="360" r="82" fill="url(#pdgrey)"/>' + [0, 1, 2, 3].map(i => `<rect x="392" y="${322 + i * 15}" width="26" height="7" rx="3" fill="#b7b9bd"/>`).join(''));
+  // d-pad arrows + small buttons + logo
+  const tri = (k, pts) => `<polygon class="k" data-k="${k}" points="${pts}" fill="#5d5f64"/>`;
+  h += pl(8, tri('du', '280,296 308,334 252,334') + tri('dd', '280,424 308,386 252,386') + tri('dl', '216,360 254,332 254,388') + tri('dr', '344,360 306,332 306,388') + '<circle cx="280" cy="360" r="14" fill="#7a7c81"/>');
+  const sm = (k, x, y, icon) => `<g class="k" data-k="${k}" fill="#101113"><rect x="${x - 34}" y="${y - 16}" width="68" height="32" rx="16" stroke="#44454a" stroke-width="3"/></g><g transform="translate(${x} ${y})" fill="none" stroke="#e4e5e8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" pointer-events="none">${icon}</g>`;
+  h += pl(10, sm('back', 310, 175, '<rect x="-12" y="-6" width="15" height="11" rx="2"/><rect x="-3" y="-2" width="15" height="11" rx="2"/>')
+    + sm('start', 490, 165, '<path d="M -11 -6 H 11 M -11 0 H 11 M -11 6 H 11"/>')
+    + sm('share', 345, 235, '<path d="M -12 -4 V -10 H -6 M 6 -10 H 12 V -4 M 12 4 V 10 H 6 M -6 10 H -12 V 4"/>')
+    + sm('guide', 460, 230, '<path d="M -11 1 L 0 -9 L 11 1 M -8 -1 V 9 H 8 V -1"/>')
+    + `<g class="k" data-k="logo" fill="#9be000"><polygon points="412,412 452,482 372,482" stroke="#9be000" stroke-width="10" stroke-linejoin="round"/></g><path d="M 396 462 c 5 -12 12 -12 16 0 s 11 12 16 0" fill="none" stroke="#1a2300" stroke-width="5" stroke-linecap="round" pointer-events="none"/>`);
+  // sticks (cylinder) — move with the stick axes
+  const stick = (cls, k, cx, cy) => { let s = ''; for (let i = 0; i < 6; i++) s += pl(12 + i * 3, `<g class="stk ${cls}"><circle cx="${cx}" cy="${cy}" r="51" fill="#17181b" stroke="#2c2d32" stroke-width="2" data-k="${k}"/></g>`); return s + pl(31, `<g class="stk ${cls}"><circle class="k" data-k="${k}" cx="${cx}" cy="${cy}" r="49" fill="url(#pdcap)" stroke="#55565b" stroke-width="3"/><circle cx="${cx}" cy="${cy}" r="33" fill="none" stroke="#0e0f11" stroke-width="2" pointer-events="none"/><circle cx="${cx}" cy="${cy}" r="18" fill="none" stroke="#0e0f11" stroke-width="2" pointer-events="none"/></g>`); };
+  h += stick('ls', 'l3', 145, 200) + stick('rs', 'r3', 537, 350);
+  // face buttons
+  const fb = (k, x, y) => `<g class="k" data-k="${k}" fill="#80828a"><circle cx="${x}" cy="${y}" r="35" stroke="#55575c" stroke-width="3"/></g><text x="${x}" y="${y + 13}" text-anchor="middle" fill="#fff" font-family="Segoe UI,sans-serif" font-weight="700" font-size="38" pointer-events="none">${k.toUpperCase()}</text>`;
+  h += pl(14, fb('y', 650, 118) + fb('x', 587, 187) + fb('b', 718, 183) + fb('a', 655, 252));
+  // names floating above everything
+  const L = (x, y, t, tx, ty, a) => `<line class="ln" x1="${x}" y1="${y - 8}" x2="${tx}" y2="${ty}"/><text class="lbl" x="${x}" y="${y}" text-anchor="${a || 'middle'}">${t}</text>`;
+  h += pl(54, L(130, 20, 'LB', 190, 60) + L(730, 20, 'RB', 670, 60) + L(310, 128, 'View', 310, 160) + L(490, 120, 'Menu', 490, 150) + L(330, 292, 'Capture', 340, 250) + L(470, 292, 'Home', 462, 245)
+    + L(145, 305, 'L3 · left stick', 145, 262) + L(600, 470, 'R3 · right stick', 560, 418) + L(280, 482, 'D-pad', 280, 440) + L(412, 530, 'PXN logo', 412, 490), 'lblpl');
+  return h;
+}
+function padTop() {
+  const part = (k, x, y, w, hh, r, fill, name, tx, ty) => `<g class="k" data-k="${k}" fill="${fill}"><rect x="${x}" y="${y}" width="${w}" height="${hh}" rx="${r}"/></g><text class="lbl" x="${tx}" y="${ty}" text-anchor="middle" pointer-events="none">${name}</text>`;
+  let h = '';
+  for (let i = 0; i < 6; i++) h += `<svg class="pl" viewBox="0 0 860 340" style="transform:translateZ(${-18 + i * 3}px)"><rect x="40" y="50" width="780" height="270" rx="70" fill="rgb(${14 + i * 2},${15 + i * 2},${20 + i * 2})"/></svg>`;
+  h += `<svg class="pl" viewBox="0 0 860 340" style="transform:translateZ(2px)">`
+    + part('lt', 70, 60, 300, 90, 40, '#c9cbcf', 'LT · left trigger', 220, 112) + part('lb', 50, 160, 330, 120, 48, '#e6e7ea', 'LB · left bumper', 215, 228)
+    + part('rt', 490, 60, 300, 90, 40, '#c9cbcf', 'RT · right trigger', 640, 112) + part('rb', 480, 160, 330, 120, 48, '#e6e7ea', 'RB · right bumper', 645, 228)
+    + `<rect x="392" y="150" width="76" height="130" rx="22" fill="#d7d8dc"/><rect x="404" y="186" width="52" height="22" rx="11" fill="#0d0d10" stroke="#9a9ca1" stroke-width="3"/><text class="lbl" x="430" y="318" text-anchor="middle">USB-C</text></svg>`;
+  return h;
+}
+function initPad(w) {
+  w.querySelector('.pad3d:not(.top)').innerHTML = padFront(); w.querySelector('.pad3d.top').innerHTML = padTop();
+  const legend = w.querySelector('.plegend'), now = w.querySelector('.pnow');
+  PAD_GROUPS.forEach(g => g.forEach(k => { const c = document.createElement('div'); c.className = 'chip'; c.dataset.c = k; c.innerHTML = `<b>${PADK[k][0]}</b><small>${PADK[k][1]}</small>`; c.addEventListener('click', () => flashPad(w, k)); legend.append(c); }));
+  const st = { yaw: 0, pitch: 0, dragging: false, view: 'front', down: null, ox: 0, oy: 0, moved: 0, t0: Date.now() };
+  w._pad = st;
+  w.querySelectorAll('.pvw button').forEach(b => b.addEventListener('click', () => { st.view = b.dataset.v; w.querySelectorAll('.pvw button').forEach(x => x.classList.toggle('on', x === b)); w.querySelectorAll('.pscene').forEach(s => s.classList.toggle('on', s.dataset.v === st.view)); }));
+  const stage = w.querySelector('.pstage');
+  stage.addEventListener('pointerdown', e => { st.down = { x: e.clientX, y: e.clientY }; st.dragging = true; st.moved = 0; st.ox = st.yaw; st.oy = st.pitch; try { stage.setPointerCapture(e.pointerId); } catch (x) {} });
+  stage.addEventListener('pointermove', e => { if (!st.dragging) return; const dx = e.clientX - st.down.x, dy = e.clientY - st.down.y; st.moved = Math.max(st.moved, Math.abs(dx) + Math.abs(dy)); st.yaw = Math.max(-70, Math.min(70, st.ox + dx * 0.4)); st.pitch = Math.max(-45, Math.min(45, st.oy - dy * 0.3)); });
+  const end = e => { if (!st.dragging) return; st.dragging = false; if (st.moved < 8) { const t = document.elementsFromPoint(e.clientX, e.clientY).find(n => n.dataset && n.dataset.k); if (t) flashPad(w, t.dataset.k); } st.resume = Date.now() + 1800; };
+  stage.addEventListener('pointerup', end); stage.addEventListener('pointercancel', end);
+  const timer = setInterval(() => {
+    if (!w.isConnected) { clearInterval(timer); return; }
+    const pageEl = w.closest('.page'); if (!pageEl || pageEl !== $('pages').children[curPage]) return;
+    const t = (Date.now() - st.t0) / 1000;
+    if (!st.dragging && (!st.resume || Date.now() > st.resume)) { st.yaw += (16 * Math.sin(t * 0.8) - st.yaw) * 0.08; st.pitch += (8 + 7 * Math.sin(t * 0.55) - st.pitch) * 0.08; }
+    w.querySelectorAll('.pscene').forEach(sc => {
+      const el = sc.firstElementChild, isTop = el.classList.contains('top'), bw = 900, bh = isTop ? 380 : 660, s = Math.min(sc.clientWidth / bw, sc.clientHeight / bh) || 0.4;
+      el.style.transform = `translate(-50%,-50%) scale(${s}) rotateX(${(isTop ? 38 : 0) - st.pitch}deg) rotateY(${st.yaw}deg)`;
+    });
+    if (PREVIEW) demoPad(w, t);
+  }, 33);
+  w.querySelector('.pst').innerHTML = '<i></i>Tap a button to see its name';
+}
+let padState = null, padPrev = 0, padPrevT = [0, 0], padFlashT = null;
+function padNames(mask, lt, rt) { const out = []; Object.keys(PADM).forEach(k => { if (mask & PADM[k]) out.push(k); }); if (lt > 30) out.push('lt'); if (rt > 30) out.push('rt'); return out; }
+function flashPad(w, k) {
+  const info = PADK[k]; if (!info) return;
+  w.querySelectorAll(`[data-k="${k}"], [data-c="${k}"]`).forEach(n => n.classList.add('hot'));
+  w.querySelector('.pnow').innerHTML = `${info[0]}<small>${info[1]}</small>`;
+  clearTimeout(padFlashT); padFlashT = setTimeout(() => { w.querySelectorAll('.hot').forEach(n => { if (!padHeld.has(n.dataset.k || n.dataset.c)) n.classList.remove('hot'); }); }, 1400);
+}
+let padHeld = new Set();
+function demoPad(w, t) {
+  const ks = ['a', 'b', 'x', 'y', 'lb', 'rb', 'lt', 'rt', 'back', 'start'], k = ks[Math.floor(t * 1.4) % ks.length];
+  w.querySelectorAll('.hot').forEach(n => n.classList.remove('hot')); w.querySelectorAll(`[data-k="${k}"], [data-c="${k}"]`).forEach(n => n.classList.add('hot'));
+  const ls = w.querySelectorAll('.ls'); ls.forEach(n => { n.style.transform = `translate(${Math.cos(t) * 8}px,${Math.sin(t) * 8}px)`; });
+}
+function renderPad() {
+  if (PREVIEW) return;
+  const m = padState; if (!m) return;
+  const held = new Set(m.connected ? padNames(m.b, m.lt, m.rt) : []);
+  const known = Object.values(PADM).reduce((a, b) => a | b, 0), unknown = m.connected ? (m.b & ~known) : 0;
+  const fresh = [...held].filter(k => !padHeld.has(k)); padHeld = held;
+  document.querySelectorAll('.padw').forEach(w => {
+    w.querySelector('.pst').className = 'pst' + (m.connected ? ' on' : '');
+    w.querySelector('.pst').innerHTML = '<i></i>' + (m.connected ? 'Controller connected - press any button' : 'No controller found. Connect it to the PC, or just tap a button to see its name');
+    w.querySelectorAll('[data-k], [data-c]').forEach(n => { const k = n.dataset.k || n.dataset.c; n.classList.toggle('hot', held.has(k)); });
+    const mv = (cls, ax, ay) => w.querySelectorAll('.' + cls).forEach(n => { n.style.transform = `translate(${(m[ax] || 0) * 0.2}px,${-(m[ay] || 0) * 0.2}px)`; });
+    mv('ls', 'lx', 'ly'); mv('rs', 'rx', 'ry');
+    if (fresh.length) { const k = fresh[fresh.length - 1], i = PADK[k]; w.querySelector('.pnow').innerHTML = `${i[0]}<small>${i[1]}</small>`; }
+    else if (unknown) w.querySelector('.pnow').innerHTML = `Other button<small>code 0x${unknown.toString(16)}</small>`;
+  });
 }
 // ---- Game stats ------------------------------------------------------------------------------
 let game = null, subStats = false;
@@ -685,6 +819,7 @@ function onMsg(m) {
     case 'status': status = m; refreshActive(); refreshWidgets(); refreshSliders(); break;
     case 'obs': obs = m; renderObs(); refreshActive(); break;
     case 'game': game = m; renderGame(); break;
+    case 'pad': padState = m; renderPad(); break;
     case 'fg': fgApp = m.app || ''; autoAppPage(); break;
     case 'discord': if (m.inCall !== discord.inCall) dView = null; if (m.rpc !== 'ok') dGuilds = null; discord = m; renderDiscord(); refreshActive(); autoDiscordPage(); break;
     case 'layout': setLayout(m.layout); break;

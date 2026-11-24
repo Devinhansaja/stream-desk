@@ -117,6 +117,13 @@ public sealed class LayoutStore
         return new JsonObject { ["id"] = Guid.NewGuid().ToString("N")[..12], ["name"] = "Game stats", ["cols"] = 1, ["rows"] = 1, ["slots"] = slots, ["kind"] = "gamestats" };
     }
 
+    /// <summary>Full-page "Controller" widget: a 3D game controller with the button names (lights up live when it is connected to the PC).</summary>
+    public static JsonObject ControllerPage()
+    {
+        var slots = new JsonArray(); slots.Add(null);
+        return new JsonObject { ["id"] = Guid.NewGuid().ToString("N")[..12], ["name"] = "Controller", ["cols"] = 1, ["rows"] = 1, ["slots"] = slots, ["kind"] = "controller" };
+    }
+
     /// <summary>Key pages for Adobe programs. They open by themselves when that program is in front ("autoApp" = process names).</summary>
     public static IEnumerable<JsonObject> AdobePages()
     {
@@ -185,6 +192,12 @@ public sealed class LayoutStore
             {
                 if (layout["gameAdded"]?.GetValue<bool>() != true) { layout["gameAdded"] = true; dirty = true; if (!pgs.Any(p => p?["kind"]?.GetValue<string>() == "gamestats")) pgs.Add(GameStatsPage()); }
                 if (layout["adobeAdded"]?.GetValue<bool>() != true) { layout["adobeAdded"] = true; dirty = true; if (!pgs.Any(p => p?["autoApp"] != null)) foreach (var ap in AdobePages()) pgs.Add(ap); }
+            }
+            if (layout["padAdded"]?.GetValue<bool>() != true)
+            {
+                layout["padAdded"] = true; dirty = true;
+                if (layout["profiles"] is JsonArray pfp && pfp.Count > 0 && pfp[0]?["pages"] is JsonArray pgp && !pgp.Any(p => p?["kind"]?.GetValue<string>() == "controller"))
+                    pgp.Add(ControllerPage());
             }
             if (layout["unlockAdded"]?.GetValue<bool>() != true)
             {
