@@ -154,6 +154,14 @@ public static class WebEndpoints
         app.MapGet("/assets/bg.css", () => Resource("bg.css") is { } s ? Results.Text(s, "text/css") : Results.NotFound());
         app.MapGet("/assets/bg.js", () => Resource("bg.js") is { } s ? Results.Text(s, "application/javascript") : Results.NotFound());
 
+        app.MapGet("/assets/three.min.js", () => ResourceBytes("three.min.js") is { } b ? Results.File(b, "application/javascript") : Results.NotFound());
+        app.MapGet("/assets/controller/{file}", (string file) =>
+        {
+            if (file is not ("model.json" or "model.bin")) return Results.NotFound();
+            var path = Path.Combine(AppPaths.Controller, file);
+            return File.Exists(path) ? Results.File(path, file.EndsWith(".json") ? "application/json" : "application/octet-stream") : Results.NotFound();
+        });
+
         app.MapGet("/media/{file}", (string file) =>
         {
             if (!System.Text.RegularExpressions.Regex.IsMatch(file, @"^[A-Za-z0-9._-]{1,120}$")) return Results.NotFound();

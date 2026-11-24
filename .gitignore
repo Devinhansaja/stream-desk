@@ -12,3 +12,9 @@ mobile/.flutter-plugins*
 mobile/pubspec.lock
 .idea/
 *.iml
+
+# never commit 3D model source files (licence unknown)
+*.obj
+*.3ds
+xbox_con*
+

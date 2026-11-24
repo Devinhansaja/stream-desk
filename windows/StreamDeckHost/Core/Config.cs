@@ -37,6 +37,8 @@ public static class AppPaths
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StreamDeckHost");
     public static string Settings => Path.Combine(Root, "settings.json");
     public static string Wallpapers => Path.Combine(Root, "Wallpapers");
+    /// <summary>Optional 3D controller model for the phone's Controller page (made by tools/convert-controller-model.mjs).</summary>
+    public static string Controller => Path.Combine(Root, "controller");
     public static string Backgrounds => Path.Combine(Root, "Backgrounds");
     public static string State => Path.Combine(Root, "state.json");
 
