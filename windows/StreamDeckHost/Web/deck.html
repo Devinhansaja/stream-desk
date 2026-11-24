@@ -418,13 +418,13 @@ function initPad(w) {
   w.querySelector('.pad3d:not(.top)').innerHTML = padFront(); w.querySelector('.pad3d.top').innerHTML = padTop();
   const legend = w.querySelector('.plegend'), now = w.querySelector('.pnow');
   PAD_GROUPS.forEach(g => g.forEach(k => { const c = document.createElement('div'); c.className = 'chip'; c.dataset.c = k; c.innerHTML = `<b>${PADK[k][0]}</b><small>${PADK[k][1]}</small>`; c.addEventListener('click', () => flashPad(w, k)); legend.append(c); }));
-  const st = { yaw: 0, pitch: 0, dragging: false, view: 'front', down: null, ox: 0, oy: 0, moved: 0, t0: Date.now() };
+  const st = { yaw: 0, pitch: 10, go: null, dragging: false, view: 'front', down: null, ox: 0, oy: 0, moved: 0, t0: Date.now() };
   w._pad = st;
   w.querySelectorAll('.pvw button').forEach(b => b.addEventListener('click', () => { st.view = b.dataset.v; w.querySelectorAll('.pvw button').forEach(x => x.classList.toggle('on', x === b)); w.querySelectorAll('.pscene').forEach(s => s.classList.toggle('on', s.dataset.v === st.view)); }));
   w.querySelector('.pprac').addEventListener('click', () => { if (PR.on) prStop(w); else prStart(w); });
   w.querySelector('.ppool select').addEventListener('change', e => { PR.pool = e.target.value; PR.target = null; PR.streak = 0; if (PR.on) prNext(w); });
   const stage = w.querySelector('.pstage');
-  stage.addEventListener('pointerdown', e => { st.down = { x: e.clientX, y: e.clientY }; st.dragging = true; st.moved = 0; st.ox = st.yaw; st.oy = st.pitch; try { stage.setPointerCapture(e.pointerId); } catch (x) {} });
+  stage.addEventListener('pointerdown', e => { st.go = null; st.down = { x: e.clientX, y: e.clientY }; st.dragging = true; st.moved = 0; st.ox = st.yaw; st.oy = st.pitch; try { stage.setPointerCapture(e.pointerId); } catch (x) {} });
   stage.addEventListener('pointermove', e => { if (!st.dragging) return; const dx = e.clientX - st.down.x, dy = e.clientY - st.down.y; st.moved = Math.max(st.moved, Math.abs(dx) + Math.abs(dy)); const big = !!w._v3; st.yaw = Math.max(big ? -200 : -70, Math.min(big ? 200 : 70, st.ox + dx * (big ? 0.5 : 0.4))); st.pitch = Math.max(big ? -80 : -45, Math.min(big ? 85 : 45, st.oy - dy * 0.3)); });
   const end = e => { if (!st.dragging) return; st.dragging = false; if (st.moved < 8) { const k = w._v3 ? w._v3.pick(e.clientX, e.clientY) : (document.elementsFromPoint(e.clientX, e.clientY).find(n => n.dataset && n.dataset.k) || { dataset: {} }).dataset.k; if (k) flashPad(w, k); } st.resume = Date.now() + 1800; };
   stage.addEventListener('pointerup', end); stage.addEventListener('pointercancel', end);
@@ -432,7 +432,8 @@ function initPad(w) {
     if (!w.isConnected) { clearInterval(timer); return; }
     const pageEl = w.closest('.page'); if (!pageEl || pageEl !== $('pages').children[curPage]) return;
     const t = (Date.now() - st.t0) / 1000;
-    if (!st.dragging && (!st.resume || Date.now() > st.resume)) { const by = st.baseYaw || 0, bp = st.basePitch ?? 8; st.yaw += (by + 14 * Math.sin(t * 0.8) - st.yaw) * 0.08; st.pitch += (bp + 6 * Math.sin(t * 0.55) - st.pitch) * 0.08; }
+    // no automatic swaying: it stays where you leave it. Only the Front / Top / Back buttons glide it to a view.
+    if (st.go && !st.dragging) { st.yaw += (st.go.y - st.yaw) * 0.16; st.pitch += (st.go.p - st.pitch) * 0.16; if (Math.abs(st.go.y - st.yaw) < 0.3 && Math.abs(st.go.p - st.pitch) < 0.3) { st.yaw = st.go.y; st.pitch = st.go.p; st.go = null; } }
     if (w._v3) { w._v3.frame(t); if (PREVIEW && !PADTEST && !PR.on) demoPad(w, t); prMark(w); return; }
     w.querySelectorAll('.pscene').forEach(sc => {
       const el = sc.firstElementChild, isTop = el.classList.contains('top'), bw = 900, bh = isTop ? 380 : 660, s = Math.min(sc.clientWidth / bw, sc.clientHeight / bh) || 0.4;
@@ -498,7 +499,7 @@ async function load3D(w) {
   V.setHeld = (held, m) => { V.held = held; V.m = m || null; };
   V.flash = k => { V.flash[k] = Date.now() + 1400; };
   V.pick = (cx, cy) => { const r = canvas.getBoundingClientRect(), ray = new THREE.Raycaster(); ray.setFromCamera(new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1), cam); const h = ray.intersectObjects(all, false)[0]; return h ? h.object.userData.key : null; };
-  V.go = (yaw, pitch) => { st.yaw = yaw; st.pitch = pitch; st.resume = Date.now() + 6000; };
+  V.go = (yaw, pitch) => { st.go = { y: yaw, p: pitch }; };
   V.frame = t => {
     const W = stage.clientWidth, H = stage.clientHeight; if (!W || !H) return;
     if (W !== V.W || H !== V.H) { V.W = W; V.H = H; ren.setSize(W, H, false); cam.aspect = W / H; cam.updateProjectionMatrix(); }
@@ -531,7 +532,7 @@ async function load3D(w) {
   };
   V.keyMeshes = keyMeshes; w._v3 = V; w.classList.add('has3d');
   w.querySelectorAll('.pscene').forEach(s => { s.style.display = 'none'; });
-  const bar = w.querySelector('.pvw'); bar.innerHTML = '<button data-g="0,0" class="on">Front</button><button data-g="0,72">Top</button><button data-g="180,0">Back</button><button data-t="lbl" class="on">Names</button>';
+  const bar = w.querySelector('.pvw'); bar.innerHTML = '<button data-g="0,10" class="on">Front</button><button data-g="0,72">Top</button><button data-g="180,10">Back</button><button data-t="lbl" class="on">Names</button>';
   bar.querySelectorAll('button[data-g]').forEach(b => b.addEventListener('click', () => { const [y, p] = b.dataset.g.split(',').map(Number); V.go(y, p); bar.querySelectorAll('button[data-g]').forEach(x => x.classList.toggle('on', x === b)); }));
   bar.querySelector('[data-t="lbl"]').addEventListener('click', e => { e.currentTarget.classList.toggle('on'); lay.style.display = e.currentTarget.classList.contains('on') ? '' : 'none'; });
   return true;
